@@ -9,7 +9,8 @@ FROM node:22-alpine AS deps
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev \
+ && rm -rf node_modules/better-sqlite3/build/Release/obj.target node_modules/.npm-cache node_modules/.cache
 
 # ---------- 2) Interface (Vite -> dist/) ----------
 FROM node:22-alpine AS ui
@@ -26,12 +27,12 @@ FROM node:22-alpine AS runtime
 RUN apk add --no-cache tzdata
 ENV TZ=Europe/Paris NODE_ENV=production
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=ui /app/dist ./dist
-COPY package.json ./
-COPY src ./src
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=ui --chown=node:node /app/dist ./dist
+COPY --chown=node:node package.json ./
+COPY --chown=node:node src ./src
 # Le cache SQLite vit dans le volume monté sur /app/data.
-RUN mkdir -p /app/data && chown -R node:node /app
+RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 8765
 VOLUME ["/app/data"]
