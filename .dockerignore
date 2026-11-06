@@ -1,0 +1,11 @@
+# Contexte de build Docker : le code source suffit, pas les artefacts locaux.
+node_modules
+dist
+data
+logs
+.tmp
+.git
+.env
+.env.*
+npm-debug.log*
+README.md

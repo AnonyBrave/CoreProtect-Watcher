@@ -1,0 +1,41 @@
+{
+  "name": "coreprotect-watcher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "dev:web": "vite",
+    "build:web": "vite build",
+    "docker:build": "docker build -t coreprotect-watcher:local .",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.4.0",
+    "@fastify/static": "^10.1.9",
+    "better-sqlite3": "^12.11.1",
+    "dotenv": "^18.0.9",
+    "fastify": "^5.12.8",
+    "mysql2": "^3.24.6",
+    "recharts": "^2.15.4",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^20.19.43",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.21.5": true
+  }
+}

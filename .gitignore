@@ -1,0 +1,22 @@
+# Dépendances & artefacts
+node_modules/
+dist/
+logs/
+.tmp/
+.cache/
+npm-debug.log*
+
+# Secrets et données locales (base SQLite, cache d'ingestion)
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Éditeurs / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

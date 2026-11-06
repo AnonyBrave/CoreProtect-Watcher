@@ -1,0 +1,31 @@
+name: coreprotect-watcher
+
+# Base MySQL CoreProtect du LAN (lecture seule) : service externe, pas de conteneur DB ici.
+# Les coordonnées sont lues depuis .env (CP_DB_HOST / CP_DB_PORT / CP_DB_USER / CP_DB_PASSWORD / CP_DB_NAME).
+services:
+  watcher:
+    build: .
+    image: coreprotect-watcher:local
+    container_name: coreprotect-watcher
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Port écouté dans le conteneur ; la mapping ci-dessous doit l'égaler.
+      CP_WATCHER_PORT: "8765"
+      CP_SQLITE_FILE: /app/data/coreprotect-watcher.db
+      TZ: Europe/Paris
+    ports:
+      - "8765:8765"
+    volumes:
+      # Cache SQLite persistant. Remplace par « ./data:/app/data » pour le garder dans le dépôt local.
+      - cpw-data:/app/data
+    init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  cpw-data:

@@ -1,0 +1,7 @@
+# Fins de ligne normalisées en LF : le conteneur Linux est sensible aux CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.jpg binary
+*.db binary
