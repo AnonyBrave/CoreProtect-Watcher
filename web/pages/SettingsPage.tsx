@@ -116,7 +116,7 @@ export default function SettingsPage() {
       setSqUrl(sm.url ?? "");
       setSqMap(Object.fromEntries(Object.entries(sm.worlds ?? {}).map(([k, v]) => [Number(k), String(v)])));
       api.worlds().then((ws) => setWorldNames(ws)).catch(() => {});
-      squaremapWorldsList().then((r) => setSqNames(r.worlds ?? [])).catch(() => {});
+      squaremapWorldsList().then((r) => setSqNames((r.worlds ?? []).map((w) => w.name))).catch(() => {});
       api.imports().then((r) => { setImportDir(r.dir); setImportFiles(r.files); }).catch(() => {});
     }).catch((e: Error) => setToast(e.message));
   }, []);

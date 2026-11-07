@@ -65,6 +65,7 @@ export default function AlertsPage({ route }: { route: string }) {
   const [page, setPage] = useState(0);
 
   const [items, setItems] = useState<IncidentRow[]>([]);
+  const [ids, setIds] = useState<number[]>([]);
   const [total, setTotal] = useState(0);
   const [detail, setDetail] = useState<FullIncident | null>(null);
   const [note, setNote] = useState("");
@@ -75,7 +76,15 @@ export default function AlertsPage({ route }: { route: string }) {
     let on = true;
     api
       .incidents({ kind, status, minSeverity: Number(minSev) || 0, limit: PAGE, offset: page * PAGE })
-      .then((r) => { if (on) { setItems(r.items); setTotal(r.total); } })
+      .then((r) => {
+        if (!on) return;
+        setItems(r.items);
+        setTotal(r.total);
+        const full = Math.min(500, Math.max(1, r.total));
+        api.incidents({ kind, status, minSeverity: Number(minSev) || 0, limit: full, offset: 0 })
+          .then((all) => { if (on) setIds(all.items.map((x) => x.id)); })
+          .catch(() => {});
+      })
       .catch((e: Error) => { if (on) setToast(e.message); });
     return () => { on = false; };
   }, [kind, status, minSev, page, live.lastCycleAt]);
@@ -90,6 +99,16 @@ export default function AlertsPage({ route }: { route: string }) {
     return () => { on = false; };
   }, [selId]);
 
+  const selIdx = selId === null ? -1 : ids.indexOf(selId);
+  const goNeighbor = (delta: number) => {
+    if (ids.length === 0) return;
+    const target = selIdx === -1 ? (delta > 0 ? 0 : ids.length - 1) : selIdx + delta;
+    if (target < 0 || target >= ids.length) return;
+    setPage(Math.floor(target / PAGE));
+    location.hash = #/alerts/;
+  };
+  const prevEnabled = ids.length > 0 && (selIdx === -1 ? ids.length > 1 : selIdx > 0);
+  const nextEnabled = ids.length > 0 && (selIdx === -1 || selIdx < ids.length - 1);
   const patch = (body: { status?: string; note?: string }) => {
     if (selId === null) return;
     api.patchIncident(selId, body)
@@ -171,9 +190,9 @@ export default function AlertsPage({ route }: { route: string }) {
         </table>
 
         <div className="flexrow" style={{ marginTop: 8 }}>
-          <button type="button" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>← précédent</button>
+          <button type="button" disabled={!prevEnabled} onClick={() => goNeighbor(-1)}>← incident précédent</button>
           <span className="muted">{fmtNum(items.length)} sur {fmtNum(total)} incidents réels (les simulations sont masquées)</span>
-          <button type="button" disabled={items.length < PAGE} onClick={() => setPage((p) => p + 1)}>suivant →</button>
+          <button type="button" disabled={!nextEnabled} onClick={() => goNeighbor(1)}>incident suivant →</button>
         </div>
       </Card>
 
