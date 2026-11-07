@@ -486,7 +486,7 @@ export function createApp(): FastifyInstance {
       const row = db.prepare("SELECT value FROM setting WHERE key=?").get(k) as { value: string } | undefined;
       settings[k] = parseJson(row?.value, null);
     }
-    return { settings, keys: SETTING_KEYS };
+    return { settings, keys: SETTING_KEYS, adminToken: cfg.adminToken };
   });
 
   app.post("/api/settings", { preHandler: [requireAdmin] }, async (req) => {

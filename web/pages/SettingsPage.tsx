@@ -115,6 +115,10 @@ export default function SettingsPage() {
       const sm = (st.squaremap_json as { url?: string; worlds?: Record<string, string> }) ?? {};
       setSqUrl(sm.url ?? "");
       setSqMap(Object.fromEntries(Object.entries(sm.worlds ?? {}).map(([k, v]) => [Number(k), String(v)])));
+
+      setTokenState(s.adminToken);
+      setAdminToken(s.adminToken);
+
       api.worlds().then((ws) => setWorldNames(ws)).catch(() => {});
       squaremapWorldsList().then((r) => setSqNames((r.worlds ?? []).map((w) => w.name))).catch(() => {});
       api.imports().then((r) => { setImportDir(r.dir); setImportFiles(r.files); }).catch(() => {});

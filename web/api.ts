@@ -74,6 +74,7 @@ export interface FullIncident {
 export interface SettingsData {
   settings: Record<string, unknown>;
   keys: string[];
+  adminToken: string;
 }
 
 export interface OverviewData {
