@@ -49,7 +49,7 @@ Premier lancement : backfill complet depuis MySQL puis recomputation lourde, sel
 
 ## Déploiement serveur avec DockGe (image privée sur ghcr.io)
 
-Le workflow `.github/workflows/docker.yml` construit l'image à chaque push sur `main`, pousse les étiquettes `latest` et `sha-<commit>` sur **ghcr.io/anonybrave/coreprotect-watcher** et force la visibilité du package en **privé**. Il utilise uniquement le jeton du workflow (`GITHUB_TOKEN`) : aucun secret n'est écrit dans la stack.
+Le workflow `.github/workflows/docker.yml` construit l'image à chaque push sur `main` et pousse les étiquettes `latest` et `sha-<commit>` sur **ghcr.io/anonybrave/coreprotect-watcher** (package créé **privé**, visible dans *Packages → coreprotect-watcher*). Il utilise uniquement le jeton du workflow (`GITHUB_TOKEN`) : aucun secret n'est écrit dans la stack.
 
 Stack à coller dans DockGe (le serveur tire l'image du registre, il ne build pas depuis GitHub) :
 

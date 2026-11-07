@@ -48,9 +48,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Forcer la visibilité du package en privé (défaut GHCR = public)
-        run: |
-          gh api -X PUT /users/AnonyBrave/packages/container/coreprotect-watcher/visibility \
-            -H "Accept: application/vnd.github+json" \
-            -F visibility=private
