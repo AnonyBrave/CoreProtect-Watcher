@@ -24,7 +24,7 @@ export const StatusChip = ({ status, count = 0 }: { status: string; count?: numb
   </span>
 );
 
-const STATUS_CLASS: Record<string, string> = { new: "st-new", seen: "st-seen", closed: "st-closed" };
+const STATUS_CLASS: Record<string, string> = { new: "st-new", seen: "st-seen", closed: "st-closed", deleted: "st-deleted" };
 
 export const KindChip = ({ kind }: { kind: string }) => (
   <span className="chip public">{KIND_LABEL[kind] ?? kind}</span>

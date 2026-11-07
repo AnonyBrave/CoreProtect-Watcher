@@ -6,7 +6,7 @@ import { Card, Sev, StatusChip, KindChip, Toast } from "../ui.js";
 import { useLive } from "../live.js";
 
 const KINDS = ["", "theft", "theft_shared", "dupe", "grief", "anomaly", "chat"] as const;
-const STATUSES = ["", "new", "seen", "closed"] as const;
+const STATUSES = ["", "new", "seen", "closed", "deleted"] as const;
 const PAGE = 60;
 
 /** Libellés français des clés de preuve (evidence_json) par détecteur. */
@@ -241,6 +241,7 @@ function IncidentDetail({ detail, note, setNote, patch }: {
             <button type="button" className={`st-btn ${STATUS_CLASS.new}${detail.status === "new" ? " active" : ""}`} onClick={() => patch({ status: "new" })}>nouvel</button>
             <button type="button" className={`st-btn ${STATUS_CLASS.seen}${detail.status === "seen" ? " active" : ""}`} onClick={() => patch({ status: "seen" })}>vu</button>
             <button type="button" className={`st-btn ${STATUS_CLASS.closed}${detail.status === "closed" ? " active" : ""}`} onClick={() => patch({ status: "closed" })}>fermé</button>
+            <button type="button" className={`st-btn ${STATUS_CLASS.deleted}${detail.status === "deleted" ? " active" : ""}`} onClick={() => patch({ status: "deleted" })} title="l'incident est masqué de l'interface (liste, vue d'ensemble, carte, export CSV)">supprimer</button>
             <span className="muted">jeton d'administration défini dans l'onglet Réglages, enregistré localement</span>
           </div>
           <label>note interne</label>

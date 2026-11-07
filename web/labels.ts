@@ -21,9 +21,10 @@ export const STATUS_LABEL: Record<string, string> = {
   new: "nouvel",
   seen: "vu",
   closed: "fermé",
+  deleted: "supprimé",
 };
 
-export const STATUS_CLASS: Record<string, string> = { new: "st-new", seen: "st-seen", closed: "st-closed" };
+export const STATUS_CLASS: Record<string, string> = { new: "st-new", seen: "st-seen", closed: "st-closed", deleted: "st-deleted" };
 
 export const stateClass = (state: string): string => (state === "owned" ? "owned" : state === "public" ? "public" : state === "ambiguous" ? "ambiguous" : "untracked");
 

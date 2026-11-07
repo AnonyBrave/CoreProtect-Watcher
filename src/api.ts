@@ -111,7 +111,7 @@ export function createApp(): FastifyInstance {
                 (SELECT COUNT(*) FROM session_evt s WHERE s.uid=p.uid) sessions,
                 (SELECT MAX(time) FROM session_evt s WHERE s.uid=p.uid) last_session,
                 (SELECT COUNT(*) FROM container_evt e WHERE e.uid=p.uid AND e.rolled_back=0) cont_events,
-                (SELECT COUNT(*) FROM incident i WHERE i.test=0 AND i.uid=p.uid) incidents_as_actor,
+                (SELECT COUNT(*) FROM incident i WHERE i.test=0 AND i.uid=p.uid AND i.status<>'deleted') incidents_as_actor,
                 (SELECT COALESCE(SUM(composite),0) FROM player_score ps WHERE ps.uid=p.uid) score
          FROM player p WHERE p.is_fake=0 ORDER BY p.total_placed DESC`
       )
@@ -133,7 +133,7 @@ export function createApp(): FastifyInstance {
         .prepare(
           `SELECT i.id,i.kind,i.severity,i.status,i.created_at,i.uid,p.name actor,i.victim_uid,v.name victim,i.x,i.z,i.amount,i.wid,w.name world
            FROM incident i LEFT JOIN player p ON p.uid=i.uid LEFT JOIN player v ON v.uid=i.victim_uid LEFT JOIN world w ON w.wid=i.wid
-           WHERE i.test=0 ORDER BY i.created_at DESC, i.id DESC LIMIT 12`
+           WHERE i.test=0 AND i.status<>'deleted' ORDER BY i.created_at DESC, i.id DESC LIMIT 12`
         )
         .all(),
       cursors: db.prepare("SELECT tbl,last_rowid,last_sync_at,rows_total FROM sync_cursor ORDER BY tbl").all(),
@@ -152,7 +152,7 @@ export function createApp(): FastifyInstance {
       .prepare(
         `SELECT p.uid,p.name,p.uuid,p.is_whitelisted,p.total_placed,p.total_broken,
                 (SELECT MAX(time) FROM session_evt s WHERE s.uid=p.uid) last_seen,
-                (SELECT COUNT(*) FROM incident i WHERE i.test=0 AND i.uid=p.uid) incidents
+                (SELECT COUNT(*) FROM incident i WHERE i.test=0 AND i.uid=p.uid AND i.status<>'deleted') incidents
          FROM player p
          WHERE p.is_fake=0 AND (? = '' OR p.name LIKE '%'||?||'%')
          ORDER BY p.total_placed DESC LIMIT ?`
@@ -181,7 +181,7 @@ export function createApp(): FastifyInstance {
         .prepare(
           `SELECT i.id,i.kind,i.severity,i.status,i.created_at,i.victim_uid,v.name victim,i.container_key,i.amount
            FROM incident i LEFT JOIN player v ON v.uid=i.victim_uid
-           WHERE i.test=0 AND (i.uid=? OR i.victim_uid=?) ORDER BY i.created_at DESC LIMIT 40`
+           WHERE i.test=0 AND (i.uid=? OR i.victim_uid=?) AND i.status<>'deleted' ORDER BY i.created_at DESC LIMIT 40`
         )
         .all(uid, uid),
       chats: db.prepare("SELECT time,wid,x,z,msg FROM chat_evt WHERE uid=? ORDER BY time DESC LIMIT 30").all(uid),
@@ -365,13 +365,16 @@ export function createApp(): FastifyInstance {
     const z0 = q.z0 !== undefined && q.z0 !== "" ? num(q.z0, -2147483647) : null;
     const z1 = q.z1 !== undefined && q.z1 !== "" ? num(q.z1, 2147483647) : null;
 
+    // Incidents ignorés (statut « deleted ») : masqués partout sauf filtre explicite.
+    const delClause = status === "" ? " AND i.status<>'deleted'" : "";
+
     const items = db
       .prepare(
         `SELECT i.id,i.kind,i.severity,i.status,i.note,i.created_at,i.uid,p.name actor,
                 i.victim_uid,v.name victim,i.wid,w.name world,i.x,i.y,i.z,i.container_key,i.amount,i.window_start,i.window_end
          FROM incident i LEFT JOIN player p ON p.uid=i.uid LEFT JOIN player v ON v.uid=i.victim_uid
          LEFT JOIN world w ON w.wid=i.wid
-         WHERE i.test=0 AND (?='' OR i.kind=?) AND (?='' OR i.status=?) AND COALESCE(i.severity,0) >= ?
+         WHERE i.test=0 AND (?='' OR i.kind=?) AND (?='' OR i.status=?) AND COALESCE(i.severity,0) >= ?${delClause}
            AND (? IS NULL OR i.wid=?)
            AND (COALESCE(i.x,-2147483647) BETWEEN ? AND ?)
            AND (COALESCE(i.z,-2147483647) BETWEEN ? AND ?)
@@ -380,7 +383,7 @@ export function createApp(): FastifyInstance {
       .all(kind, kind, status, status, num(q.minSeverity, 0), wid, wid, x0 ?? -2147483647, x1 ?? 2147483647, z0 ?? -2147483647, z1 ?? 2147483647, limit, offset);
 
     const where =
-      `WHERE i.test=0 AND (?='' OR i.kind=?) AND (?='' OR i.status=?) AND COALESCE(i.severity,0) >= ?` +
+      `WHERE i.test=0 AND (?='' OR i.kind=?) AND (?='' OR i.status=?) AND COALESCE(i.severity,0) >= ?${delClause}` +
       (wid !== null ? " AND i.wid=?" : "");
     const total = (db.prepare(`SELECT COUNT(*) c FROM incident i ${where}`).get(...(wid !== null ? [kind, kind, status, status, num(q.minSeverity, 0), wid] : [kind, kind, status, status, num(q.minSeverity, 0)])) as { c: number }).c;
     return { items, total };
@@ -396,6 +399,11 @@ export function createApp(): FastifyInstance {
     const id = num((req.params as { id: string }).id);
     const body = (req.body ?? {}) as { status?: string; note?: string };
     if (!db.prepare("SELECT id FROM incident WHERE id=?").get(id)) return notFound(reply);
+
+    const STATUSES_OK = ["new", "seen", "closed", "deleted"];
+    if (body.status !== undefined && !STATUSES_OK.includes(body.status)) {
+      return reply.code(400).send({ error: "statut invalide" });
+    }
 
     db.prepare("UPDATE incident SET status=COALESCE(?,status), note=COALESCE(?,note) WHERE id=?").run(
       body.status ?? null,
@@ -415,7 +423,7 @@ export function createApp(): FastifyInstance {
         `SELECT i.id,i.kind,i.severity,i.status,i.created_at,p.name,v.name,i.container_key,
                 i.x,i.y,i.z,i.amount,i.window_start,i.window_end,i.note
          FROM incident i LEFT JOIN player p ON p.uid=i.uid LEFT JOIN player v ON v.uid=i.victim_uid
-         WHERE i.test=0 AND (?='' OR i.kind=?) ORDER BY i.created_at DESC`
+         WHERE i.test=0 AND (?='' OR i.kind=?) AND i.status<>'deleted' ORDER BY i.created_at DESC`
       )
       .all(kind, kind) as Record<string, unknown>[];
 
