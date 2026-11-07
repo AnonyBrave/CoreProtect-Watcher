@@ -145,21 +145,38 @@ export function detectTheft(scanFromRowid: number): { created: number; eventsSca
   ).all(scanFromRowid) as WithdrawEvent[];
 
   const owners = db.prepare("SELECT owner_uid,trust_state,locked FROM container_owner WHERE key=?");
+  const shareOf = db.prepare(
+    "SELECT co_owner,score,share,events,dep_vol,wdr_vol,name FROM container_share cs JOIN player p ON p.uid=cs.uid WHERE cs.key=? AND cs.uid=?"
+  );
   const whitelist = db.prepare("SELECT is_whitelisted FROM player WHERE uid=?");
   const skipped: Record<string, number> = { fake_user: 0, unowned_container: 0, self_container: 0, whitelisted: 0 };
 
-  const candidates: WithdrawEvent[] = [];
+  // Deux flux : les retraits "classiques" (conteneur owned ou shared, acteur non membre) et
+  // les retraits des copropriétaires d'un conteneur partagé, évalués par le déséquilibre du flux.
+  const classicEvts: WithdrawEvent[] = [];
+  const memberEvts: WithdrawEvent[] = [];
+
   for (const e of evs) {
     const fake = (db.prepare("SELECT is_fake FROM player WHERE uid=?").get(e.uid) as { is_fake: number } | undefined)?.is_fake ?? 0;
     if (fake) { skipped.fake_user++; continue; }
     const o = owners.get(e.phys_key) as { owner_uid: number; trust_state: string } | undefined;
-    if (!o || o.trust_state !== "owned") { skipped.unowned_container++; continue; }   // règle anti-faux-positif
+    if (!o || (o.trust_state !== "owned" && o.trust_state !== "shared")) { skipped.unowned_container++; continue; }   // règle anti-faux-positif
+
+    if (o.trust_state === "shared") {
+      const cs = shareOf.get(e.phys_key, e.uid) as { co_owner: number } | undefined;
+      if (cs?.co_owner === 1) {
+        if ((whitelist.get(e.uid) as { is_whitelisted: number } | undefined)?.is_whitelisted) { skipped.whitelisted++; continue; }
+        memberEvts.push(e); // copropriétaire : on jugera le flux net du conteneur, pas l'événement isolé.
+        continue;
+      }
+    }
+
     if (o.owner_uid === e.uid) { skipped.self_container++; continue; }
     if ((whitelist.get(e.uid) as { is_whitelisted: number } | undefined)?.is_whitelisted) { skipped.whitelisted++; continue; }
-    candidates.push(e);
+    classicEvts.push(e);
   }
 
-  const salvos = buildSalvos(candidates);
+  const salvos = buildSalvos(classicEvts);
   const w = wts();
   const t = th();
   let created = 0;
@@ -206,9 +223,70 @@ export function detectTheft(scanFromRowid: number): { created: number; eventsSca
       const r = insInc.run(vals);
       if (r.changes > 0) created++;
     }
+
+    // Vol par un copropriétaire : retraits >> dépôts sur le conteneur partagé.
+    const ratio = t.member_wdr_ratio ?? 3.0;
+    const minVol = t.member_min_volume ?? 64;
+    for (const s of pairGroups(memberEvts)) {
+      const cs = shareOf.get(s.phys_key, s.uid) as
+        | { co_owner: number; score: number; share: number; events: number; dep_vol: number; wdr_vol: number, name: string } | undefined;
+      if (!cs || cs.wdr_vol < minVol) continue;
+      const r = cs.dep_vol > 0 ? cs.wdr_vol / cs.dep_vol : Infinity;
+      if (r < ratio) continue; // un co-détecteur de flux : le membre doit sortir nettement plus qu'il ne dépose.
+
+      const base = w.member_base ?? 35;
+      const netflowPart = Math.min(w.member_netflow_max ?? 25, ((r - ratio) / ratio) * 10 + (s.total_amount / 64) * 5);
+      const severity = Math.round((base + netflowPart + (s.rarity ?? 0)) * 10) / 10;
+
+      const o = owners.get(s.phys_key) as { owner_uid: number };
+      const evidence = {
+        container: s.phys_key,
+        shared_container: true,
+        member_uid: s.uid,
+        member_name: cs.name,
+        primary_owner_uid: o.owner_uid,
+        dep_vol: cs.dep_vol,
+        wdr_vol: cs.wdr_vol,
+        ratio: r === Infinity ? null : +r.toFixed(2),
+        share: cs.share,
+        items: s.top_items,
+        total_amount: s.total_amount,
+        events: s.events.length,
+        event_rowids: s.events.map((e) => e.rowid),
+        terms: { base, netflow_part: +netflowPart.toFixed(2), rarity_bonus: s.rarity ?? 0, wdr_dep_ratio: ratio, min_volume: minVol },
+        chat_commands: chatNear(s.uid, s.start, s.end),
+      };
+
+      const first = s.events[0];
+      const vals = [
+        "theft_shared", severity, s.uid, first.wid, first.x, first.y, first.z, o.owner_uid, s.phys_key,
+        first.item_id, s.total_amount, s.start, s.end, JSON.stringify(evidence),
+        "new", Math.floor(Date.now() / 1000), eventKey("container_evt", first.rowid),
+      ];
+      checkIncidentArgs(THEFT_COLS, vals);
+      const r2 = insInc.run(vals);
+      if (r2.changes > 0) created++;
+    }
   })();
 
   return { created, eventsScanned: evs.length, skipped };
+}
+
+/** Regroupe tous les retraits d'un même copropriétaire sur un même conteneur (une seule règle de flux). */
+function pairGroups(events: WithdrawEvent[]): Salvo[] {
+  const byPair = new Map<string, WithdrawEvent[]>();
+  for (const e of events) {
+    const k = `${e.phys_key}|${e.uid}`;
+    const arr = byPair.get(k) ?? [];
+    arr.push(e);
+    byPair.set(k, arr);
+  }
+  const out: Salvo[] = [];
+  for (const arr of byPair.values()) {
+    arr.sort((a, b) => a.time - b.time || a.rowid - b.rowid);
+    out.push(makeSalvo(arr));
+  }
+  return out;
 }
 
 export function theftScanCursor(): number {

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { LiveProvider, useLive, lastCycleLabel } from "./live.js";
 import OverviewPage from "./pages/OverviewPage.js";
 import MapPage from "./pages/MapPage.js";
+import SquareMapPage from "./pages/SquareMapPage.js";
 import PlayersPage from "./pages/PlayersPage.js";
 import ContainersPage from "./pages/ContainersPage.js";
 import AlertsPage from "./pages/AlertsPage.js";
@@ -11,6 +12,7 @@ import SettingsPage from "./pages/SettingsPage.js";
 const TABS = [
   ["#/overview", "Vue d'ensemble"],
   ["#/map", "Carte"],
+  ["#/squaremap", "SquareMap"],
   ["#/players", "Joueurs"],
   ["#/containers", "Conteneurs"],
   ["#/alerts", "Alertes"],
@@ -33,7 +35,8 @@ function Shell() {
   const live = useLive();
 
   let page: JSX.Element = <OverviewPage />;
-  if (route.startsWith("#/map")) page = <MapPage route={route} />;
+  if (route.startsWith("#/squaremap")) page = <SquareMapPage route={route} />;
+  else if (route.startsWith("#/map")) page = <MapPage route={route} />;
   else if (route.startsWith("#/players")) page = <PlayersPage route={route} />;
   else if (route.startsWith("#/containers")) page = <ContainersPage />;
   else if (route.startsWith("#/alerts")) page = <AlertsPage route={route} />;

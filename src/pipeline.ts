@@ -7,9 +7,11 @@ import {
   assignEventsToPhys,
   rebuildAggregates,
   computeOwners,
+  computeShares,
   dropEmptyOrphans,
 } from "./analysis/ownership.js";
 import { refreshItemRarity, detectTheft, theftScanCursor, setTheftScanCursor } from "./analysis/theft.js";
+import { detectDupes, dupeScanCursors, setDupeScanCursors } from "./analysis/dupe.js";
 import { detectGrief } from "./analysis/grief.js";
 import { detectChurn, detectTnt } from "./analysis/anomaly.js";
 import { detectChat, detectCommands } from "./analysis/chatwatch.js";
@@ -40,6 +42,9 @@ export function initCursors(): void {
   ensureCursor("churn_scan_rowid", maxRowid("session_evt"));
   ensureCursor("chat_scan_rowid", maxRowid("chat_evt"));
   ensureCursor("cmd_scan_rowid", maxRowid("command_evt"));
+  // Les détecteurs de duplication démarrent à la position courante d'ingestion.
+  ensureCursor("dupe_blk_rowid", maxRowid("blk"));
+  ensureCursor("dupe_item_rowid", maxRowid("item_evt"));
 }
 
 /** Ré-appariement complet des événements d'interaction sur les conteneurs physiques.
@@ -53,6 +58,8 @@ export function remapEventsToContainers(sinceBlkRowid: number): number {
   // d'événements conteneurs explose, on passera au recalcul des seules clés affectées.
   rebuildAggregates();
   computeOwners();
+  // Copropriétaires et conteneurs partagés recalculés sur toutes les clés du cycle.
+  computeShares();
   dropEmptyOrphans();
   return created;
 }
@@ -88,6 +95,11 @@ export function cycleIncremental(sinceBlkRowid: number, sinceContRowid: number):
   const cmds = detectCommands(getCursor("cmd_scan_rowid"));
   setCursor("cmd_scan_rowid", maxRowid("command_evt"));
 
+  // Duplication : trois signatures sur blk / item_evt, curseurs dédiés.
+  const [dupeBlkFrom, dupeItemFrom] = dupeScanCursors();
+  const dupes = detectDupes(dupeBlkFrom, dupeItemFrom);
+  setDupeScanCursors(blkMax, maxRowid("item_evt"));
+
   computeScores();
 
   const newIds = (db.prepare("SELECT id,kind FROM incident WHERE id > ? ORDER BY id").all(beforeInc) as { id: number; kind: string }[]);
@@ -97,7 +109,7 @@ export function cycleIncremental(sinceBlkRowid: number, sinceContRowid: number):
   return {
     chunksTouched: chunks.size,
     physContainersNew: created,
-    eventsScanned: theft.eventsScanned + grief.eventsScanned + tnt.eventsScanned + churn.eventsScanned + chat.eventsScanned + cmds.eventsScanned,
+    eventsScanned: theft.eventsScanned + grief.eventsScanned + tnt.eventsScanned + churn.eventsScanned + chat.eventsScanned + cmds.eventsScanned + dupes.eventsScanned,
     incidentsNew: newIds.map((r) => r.id),
     byKind,
   };

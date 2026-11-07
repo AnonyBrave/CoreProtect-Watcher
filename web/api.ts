@@ -175,6 +175,68 @@ export const api = {
 
 export const csvUrl = (kind = ""): string => `/api/export.csv${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`;
 
+/** Copropriétaires des conteneurs partagés (route /api/shares). */
+export interface ShareMember {
+  uid: number;
+  name: string | null;
+  share: number;
+  score: number;
+  events: number;
+  deposits: number;
+  withdraws: number;
+  dep_vol: number;
+  wdr_vol: number;
+  co_owner: number;
+}
+
+export interface ShareRow {
+  key: string;
+  wid: number;
+  x: number;
+  y: number;
+  z: number;
+  world: string | null;
+  type: string | null;
+  trust_state: string;
+  owner_uid: number | null;
+  owner_name: string | null;
+  members: ShareMember[];
+}
+
+export const shares = (key?: string): Promise<ShareRow[]> => json<ShareRow[]>(`/api/shares${key ? `?key=${encodeURIComponent(key)}` : ""}`);
+
+/** Dossier d'import SQL et ledger des fichiers traités (route /api/imports). */
+export interface ImportFile {
+  file: string;
+  bytes: number | null;
+  mtime: number | null;
+  rows: number | null;
+  state: "done" | "pending" | "failed";
+}
+
+export const imports = (): Promise<{ dir: string; files: ImportFile[] }> => json("/api/imports");
+
+/** Proxy SquareMap : instance configurée, mondes de l'instance, spawn/zoom d'un monde, joueurs suivis. */
+export interface SquaremapCfg {
+  url: string;
+  worlds: Record<number, string>;
+}
+
+export const squaremapSettings = (): Promise<SquaremapCfg> => json("/api/squaremap/settings");
+export const squaremapWorldsList = (): Promise<{ worlds: { name: string; display_name?: string }[] }> => json("/api/squaremap/worlds");
+export const squaremapWorldSettings = (world: string): Promise<Record<string, unknown>> =>
+  json(`/api/squaremap/world/${encodeURIComponent(world)}`);
+export const squaremapPlayers = (): Promise<SqPlayer[]> => json("/api/squaremap/players");
+
+export interface SqPlayer {
+  name: string;
+  uuid?: string;
+  world: string;
+  x?: number;
+  z?: number;
+  yaw?: number;
+}
+
 /** Formatage FR des dates et nombres. */
 export const fmtDate = (epoch: number | null): string =>
   epoch === null ? "-" : new Date(epoch * 1000).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });

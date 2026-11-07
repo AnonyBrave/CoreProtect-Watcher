@@ -1,8 +1,12 @@
 /** API HTTP de CoreProtect-Watcher (lecture sur SQLite, mutations réservées à l'admin). */
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import { readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { db, getSetting, setSetting } from "./db.js";
 import { cfg } from "./config.js";
 import { addSseClient, broadcast, removeSseClient, sseCount } from "./notify.js";
+import { importDir } from "./sqlimport.js";
+import { squaremapConfig, squaremapWorlds, squaremapWorldSettings, squaremapPlayers } from "./squaremap.js";
 
 function num(v: unknown, def = 0): number {
   const n = Number(v);
@@ -27,7 +31,46 @@ const SETTING_KEYS = [
   "chat_watch_json",
   "excluded_worlds_json",
   "discord_json",
+  "item_action_json",
+  "item_action_labels_json",
+  "import_json",
+  "squaremap_json",
 ];
+
+interface ShareMemberRow {
+  uid: number;
+  name: string | null;
+  share: number;
+  score: number;
+  events: number;
+  deposits: number;
+  withdraws: number;
+  dep_vol: number;
+  wdr_vol: number;
+  co_owner: number;
+}
+
+interface ShareHead {
+  key: string;
+  wid: number;
+  x: number;
+  y: number;
+  z: number;
+  world: string | null;
+  type: string | null;
+  trust_state: string;
+  owner_uid: number | null;
+  owner_name: string | null;
+  members: ShareMemberRow[];
+}
+
+interface ImportFileRow {
+  file: string;
+  bytes: number | null;
+  mtime: number | null;
+  rows: number | null;
+  state: "done" | "pending" | "failed";
+}
 
 function maxRowid(table: string): number {
   return (db.prepare(`SELECT COALESCE(MAX(rowid),0) m FROM ${table}`).get() as { m: number }).m;
@@ -209,6 +252,104 @@ export function createApp(): FastifyInstance {
       );
   });
 
+  // --- Copropriétaires (conteneurs partagés) --------------------------
+  app.get("/api/shares", (req) => {
+    const q = req.query as Record<string, string | undefined>;
+    const rows = db
+      .prepare(
+        `SELECT s.key,s.uid,s.share,s.score,s.events,s.deposits,s.withdraws,s.dep_vol,s.wdr_vol,s.co_owner,
+                p.name member_name, c.wid,c.x,c.y,c.z, w.name world, m.name type,
+                o.owner_uid,o.trust_state,po.name owner_name
+         FROM container_share s
+         JOIN phys_container c ON c.key=s.key
+         LEFT JOIN container_owner o ON o.key=s.key
+         LEFT JOIN player po ON po.uid=o.owner_uid
+         LEFT JOIN player p ON p.uid=s.uid
+         LEFT JOIN world w ON w.wid=c.wid
+         LEFT JOIN material m ON m.id=c.type_id
+         WHERE ${q.key ? "s.key=?" : "1"}
+         ORDER BY s.share DESC, s.events DESC`
+      )
+      .all(...(q.key ? [q.key] : [])) as {
+        key: string; uid: number; share: number; score: number; events: number; deposits: number;
+        withdraws: number; dep_vol: number; wdr_vol: number; co_owner: number; member_name: string | null;
+        wid: number; x: number; y: number; z: number; world: string | null; type: string | null;
+        owner_uid: number | null; trust_state: string; owner_name: string | null;
+      }[];
+
+    // regroupe les lignes de share par conteneur pour afficher la liste des co-proprietaires
+    const byKey = new Map<string, ShareHead>();
+    for (const r of rows) {
+      const member: ShareMemberRow = {
+        uid: r.uid, name: r.member_name, share: Math.round(r.share * 100) / 100, score: Math.round(r.score * 100) / 100,
+        events: r.events, deposits: r.deposits, withdraws: r.withdraws, dep_vol: r.dep_vol, wdr_vol: r.wdr_vol, co_owner: r.co_owner,
+      };
+      const head = byKey.get(r.key);
+      if (head) {
+        head.members.push(member);
+      } else {
+        byKey.set(r.key, {
+          key: r.key, wid: r.wid, x: r.x, y: r.y, z: r.z, world: r.world, type: r.type,
+          trust_state: r.trust_state, owner_uid: r.owner_uid, owner_name: r.owner_name, members: [member],
+        });
+      }
+    }
+    const out = [...byKey.values()].sort((a, b) => b.members.length - a.members.length);
+    return q.co ? out.filter((r) => r.members.some((m) => m.co_owner === 1)) : out;
+  });
+
+  // --- Import SQL : ledger + fichiers du dossier surveille -------------
+  app.get("/api/imports", () => {
+    const ledger = getSetting<Record<string, number>>("import_files_json", {} as Record<string, number>);
+    const dir = importDir();
+    let names: string[] = [];
+    try {
+      names = readdirSync(dir).filter((f) => /\.(sql|gz)$/i.test(f));
+    } catch {
+      names = [];
+    }
+    const out: ImportFileRow[] = names.map((f) => {
+      const rows = ledger[f] ?? null;
+      let bytes: number | null = null;
+      let mtime: number | null = null;
+      try {
+        const st = statSync(join(dir, f));
+        bytes = st.size;
+        mtime = Math.floor(st.mtimeMs / 1000);
+      } catch {
+        /* fichier disparu depuis le listing */
+      }
+      return { file: f, bytes, mtime, rows, state: rows === null ? "pending" : rows < 0 ? "failed" : "done" };
+    });
+    out.sort((a, b) => (b.mtime ?? 0) - (a.mtime ?? 0));
+    return { dir, files: out };
+  });
+
+  // --- SquareMap : proxy des JSON de l'instance (evite le CORS navigateur) ---
+  app.get("/api/squaremap/settings", () => squaremapConfig());
+  app.get("/api/squaremap/worlds", async () => {
+    try {
+      return await squaremapWorlds();
+    } catch (e) {
+      return { worlds: [], error: (e as Error).message };
+    }
+  });
+  app.get("/api/squaremap/world/:name", async (req) => {
+    const name = (req.params as { name: string }).name;
+    try {
+      return await squaremapWorldSettings(name);
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
+  });
+  app.get("/api/squaremap/players", async () => {
+    try {
+      return (await squaremapPlayers()) as unknown[];
+    } catch {
+      return [];
+    }
+  });
+
   // --- Incidents ---------------------------------------------------------
   app.get("/api/incidents", (req) => {
     const q = req.query as Record<string, string | undefined>;
@@ -217,6 +358,13 @@ export function createApp(): FastifyInstance {
     const limit = Math.min(200, num(q.limit, 60));
     const offset = num(q.offset, 0);
 
+    // Filtres de zone pour la carte SquareMap (bornes optionnelles + monde).
+    const wid = q.wid !== undefined && q.wid !== "" ? num(q.wid) : null;
+    const x0 = q.x0 !== undefined && q.x0 !== "" ? num(q.x0, -2147483647) : null;
+    const x1 = q.x1 !== undefined && q.x1 !== "" ? num(q.x1, 2147483647) : null;
+    const z0 = q.z0 !== undefined && q.z0 !== "" ? num(q.z0, -2147483647) : null;
+    const z1 = q.z1 !== undefined && q.z1 !== "" ? num(q.z1, 2147483647) : null;
+
     const items = db
       .prepare(
         `SELECT i.id,i.kind,i.severity,i.status,i.note,i.created_at,i.uid,p.name actor,
@@ -224,11 +372,17 @@ export function createApp(): FastifyInstance {
          FROM incident i LEFT JOIN player p ON p.uid=i.uid LEFT JOIN player v ON v.uid=i.victim_uid
          LEFT JOIN world w ON w.wid=i.wid
          WHERE i.test=0 AND (?='' OR i.kind=?) AND (?='' OR i.status=?) AND COALESCE(i.severity,0) >= ?
+           AND (? IS NULL OR i.wid=?)
+           AND (COALESCE(i.x,-2147483647) BETWEEN ? AND ?)
+           AND (COALESCE(i.z,-2147483647) BETWEEN ? AND ?)
          ORDER BY i.created_at DESC, i.id DESC LIMIT ? OFFSET ?`
       )
-      .all(kind, kind, status, status, num(q.minSeverity, 0), limit, offset);
+      .all(kind, kind, status, status, num(q.minSeverity, 0), wid, wid, x0 ?? -2147483647, x1 ?? 2147483647, z0 ?? -2147483647, z1 ?? 2147483647, limit, offset);
 
-    const total = (db.prepare("SELECT COUNT(*) c FROM incident WHERE test=0").get() as { c: number }).c;
+    const where =
+      `WHERE i.test=0 AND (?='' OR i.kind=?) AND (?='' OR i.status=?) AND COALESCE(i.severity,0) >= ?` +
+      (wid !== null ? " AND i.wid=?" : "");
+    const total = (db.prepare(`SELECT COUNT(*) c FROM incident i ${where}`).get(...(wid !== null ? [kind, kind, status, status, num(q.minSeverity, 0), wid] : [kind, kind, status, status, num(q.minSeverity, 0)])) as { c: number }).c;
     return { items, total };
   });
 

@@ -124,6 +124,17 @@ interface Prepared {
 }
 
 let prepared: Prepared[] = [];
+let liveUsableFlag = false;
+
+/** Nombre de tables prêtes pour la réplication MySQL (0 = mode fichiers pur). */
+export function preparedCount(): number {
+  return prepared.length;
+}
+
+/** La réplication live est-elle opérationnelle ? (mode auto : on bascule sur les fichiers si non) */
+export function liveUsable(): boolean {
+  return liveUsableFlag;
+}
 
 export async function prepareSync(): Promise<void> {
   prepared = [];
@@ -166,6 +177,8 @@ export async function prepareSync(): Promise<void> {
     const have = await columnsOf(t.mysqlTable);
     if (!have.size) console.log(`[sync] table MySQL ${t.mysqlTable} absente, ignorée`);
   }
+
+  liveUsableFlag = prepared.length > 0;
 }
 
 function cursorOf(tbl: string): number {

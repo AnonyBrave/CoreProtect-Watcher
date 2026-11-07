@@ -180,6 +180,22 @@ CREATE TABLE IF NOT EXISTS container_owner (
   evidence_json TEXT
 );
 
+-- Copropriétaires d'un conteneur : score normalisé + part du score total qualifié.
+CREATE TABLE IF NOT EXISTS container_share (
+  key TEXT, uid INTEGER,
+  score REAL NOT NULL DEFAULT 0,        -- score d'usage du joueur sur ce conteneur
+  share REAL NOT NULL DEFAULT 0,        -- part de ce score sur la somme des scores qualifiés
+  events INTEGER NOT NULL DEFAULT 0,
+  deposits INTEGER NOT NULL DEFAULT 0,
+  withdraws INTEGER NOT NULL DEFAULT 0,
+  dep_vol INTEGER NOT NULL DEFAULT 0,   -- volume déposé (somme des montants)
+  wdr_vol INTEGER NOT NULL DEFAULT 0,   -- volume retiré
+  first_time INTEGER, last_time INTEGER,
+  co_owner INTEGER NOT NULL DEFAULT 0,  -- 1 = retenu comme copropriétaire (part + événements suffisants)
+  PRIMARY KEY (key, uid)
+);
+CREATE INDEX IF NOT EXISTS ix_share_key ON container_share(key);
+
 CREATE TABLE IF NOT EXISTS usage_stat (
   key TEXT, uid INTEGER,
   deposits INTEGER NOT NULL DEFAULT 0,
@@ -193,7 +209,7 @@ CREATE TABLE IF NOT EXISTS usage_stat (
 -- Incidents & scores
 CREATE TABLE IF NOT EXISTS incident (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  kind TEXT NOT NULL,          -- theft|grief|anomaly|chat
+  kind TEXT NOT NULL,          -- theft|theft_shared|dupe|grief|anomaly|chat
   severity REAL NOT NULL,
   uid INTEGER, wid INTEGER, x INTEGER, y INTEGER, z INTEGER,
   victim_uid INTEGER, container_key TEXT, item_id INTEGER, amount INTEGER,
@@ -247,6 +263,11 @@ ensureColumn("container_evt", "test", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("session_evt", "test", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("incident", "test", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("container_owner", "locked", "INTEGER NOT NULL DEFAULT 0");
+// Volume déposé / retiré par joueur : flux net d'un conteneur (dupe + vol entre copropriétaires).
+ensureColumn("usage_stat", "dep_vol", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("usage_stat", "wdr_vol", "INTEGER NOT NULL DEFAULT 0");
+// Bucket de score dédié aux incidents de duplication.
+ensureColumn("player_score", "dupe_s", "REAL NOT NULL DEFAULT 0");
 // types = liste distincte des type_ids fonctionnels posés dans le chunk (union-find des clusters).
 ensureColumn("chunk_stat", "types", "TEXT NOT NULL DEFAULT ''");
 db.exec("CREATE INDEX IF NOT EXISTS ix_cont_phys ON container_evt(phys_key)");
@@ -280,7 +301,10 @@ const DEFAULT_SETTINGS: Record<string, string> = {
     base: 40, amount_max: 30, house_bonus: 20, stranger_bonus: 15, session_bonus: 10,
     grief_base: 35, grief_amount_max: 25, tnt_base: 30, churn_base: 25, chat_base: 20,
     chat_hit_max: 15, command_base: 40,
-    theft_w: 1.0, grief_w: 0.8, anomaly_w: 0.45, chat_w: 0.2,
+    // Vol entre copropriétaires (retrait > dépôt) et détections de duplication.
+    member_base: 35, member_netflow_max: 25,
+    dupe_base: 45, dupe_amount_max: 25, dupe_cycle_max: 20,
+    theft_w: 1.0, grief_w: 0.8, anomaly_w: 0.45, chat_w: 0.2, dupe_w: 0.75,
   }),
   thresholds_json: JSON.stringify({
     home_min_blocks: 40, home_min_types: 3, territory_chunks: 25,
@@ -290,17 +314,36 @@ const DEFAULT_SETTINGS: Record<string, string> = {
     chat_correlation_sec: 90, container_match_radius: 2,
     grief_min_blocks: 8, grief_window_sec: 300, tnt_min_blocks: 4,
     churn_min_logins: 12, churn_window_sec: 86400, churn_max_placed: 5,
+    // Copropriétaires d'un conteneur (part du score + volume d'usage minimal).
+    co_owner_min_share: 0.35, co_owner_min_events: 4,
+    // Vol entre copropriétaires : ratio retrait/dépôt et volume minimal de retrait.
+    member_wdr_ratio: 3.0, member_min_volume: 64,
+    // Duplication : fenêtre des cycles, déficit de flux net, surplus d'items au sol, clones de chunk.
+    dupe_window_sec: 600, dupe_min_deficit: 64, dupe_min_cycles: 2, copy_radius: 16,
+    ground_surplus_min: 64, ground_window_sec: 3600,
+    chunk_clone_min_blocks: 16, chunk_clone_window_sec: 900, clone_coord_radius: 8,
   }),
   whitelist_json: JSON.stringify(["AnonyBrave"]),
   container_action_json: JSON.stringify({ deposit: 0, withdraw: 1 }),
+  // Codes d'action co_item (la sémantique varie selon la version de CoreProtect) : listes configurables.
+  item_action_json: JSON.stringify({ drop: [0], pickup: [1, 2], spawn: [3] }),
+  item_action_labels_json: JSON.stringify({ "0": "drop", "1": "ramassage", "2": "ramassage (variante)", "3": "création/abandon" }),
   block_action_labels_json: JSON.stringify({ "0": "pose", "1": "casse", "2": "interact", "3": "autre" }),
   chat_watch_json: JSON.stringify({
     keywords: ["grief", "voleur", "volé", "steal", "stolen", "hack", "xray", "x-ray", "dupe"],
     commands: ["/give", "/gamemode", "/op ", "/deop", "/teleport"],
   }),
   excluded_worlds_json: JSON.stringify([]),
+  // Import des dumps SQL : dossier surveillé (CP_IMPORT_DIR). Les fichiers ingérés sont tenus en ledger.
+  import_json: JSON.stringify({ dir: cfg.importDir }),
+  import_files_json: JSON.stringify({}),
   // Webhook Discord : URL fournie par l'exploitant (P4), seuil propre + nom d'affichage.
   discord_json: JSON.stringify({ url: "", min_severity: 60, username: "coreprotect-watcher" }),
+  // SquareMap : base de l'instance publique + correspondance wid du cache -> monde squaremap.
+  squaremap_json: JSON.stringify({
+    url: "https://dynmap.anonybrave.fr",
+    worlds: { 1: "minecraft_overworld", 2: "minecraft_nether", 3: "minecraft_the_end" },
+  }),
 };
 
 const setStmt = db.prepare("INSERT OR IGNORE INTO setting(key,value) VALUES(?,?)");

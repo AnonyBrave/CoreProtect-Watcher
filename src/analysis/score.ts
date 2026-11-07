@@ -8,21 +8,24 @@ export function computeScores(): void {
   const wtGrief = w.grief_w ?? 0.8;
   const wtAnomaly = w.anomaly_w ?? 0.45;
   const wtChat = w.chat_w ?? 0.2;
+  const wtDupe = w.dupe_w ?? 0.75;
 
   db.exec("DELETE FROM player_score");
   db.prepare(
-    `INSERT INTO player_score(uid,day,theft_s,grief_s,anomaly_s,chat_s,composite)
+    `INSERT INTO player_score(uid,day,theft_s,grief_s,anomaly_s,chat_s,dupe_s,composite)
      SELECT uid, CAST(window_start / 86400 AS INTEGER),
-            SUM(CASE WHEN kind='theft' THEN severity ELSE 0 END),
+            SUM(CASE WHEN kind IN ('theft','theft_shared') THEN severity ELSE 0 END),
             SUM(CASE WHEN kind='grief' THEN severity ELSE 0 END),
             SUM(CASE WHEN kind='anomaly' THEN severity ELSE 0 END),
             SUM(CASE WHEN kind='chat' THEN severity ELSE 0 END),
-            MIN(100, (SUM(CASE WHEN kind='theft' THEN severity ELSE 0 END) * ?
+            SUM(CASE WHEN kind='dupe' THEN severity ELSE 0 END),
+            MIN(100, (SUM(CASE WHEN kind IN ('theft','theft_shared') THEN severity ELSE 0 END) * ?
                      + SUM(CASE WHEN kind='grief' THEN severity ELSE 0 END) * ?
                      + SUM(CASE WHEN kind='anomaly' THEN severity ELSE 0 END) * ?
-                     + SUM(CASE WHEN kind='chat' THEN severity ELSE 0 END) * ?) / 2)
+                     + SUM(CASE WHEN kind='chat' THEN severity ELSE 0 END) * ?
+                     + SUM(CASE WHEN kind='dupe' THEN severity ELSE 0 END) * ?) / 2)
      FROM incident
      WHERE test=0 AND uid NOT NULL AND window_start IS NOT NULL
      GROUP BY uid, CAST(window_start / 86400 AS INTEGER)`
-  ).run(wtTheft, wtGrief, wtAnomaly, wtChat);
+  ).run(wtTheft, wtGrief, wtAnomaly, wtChat, wtDupe);
 }

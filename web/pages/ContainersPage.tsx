@@ -85,7 +85,7 @@ export default function ContainersPage() {
                   <tr key={c.key}>
                     <td>{c.orphan ? "orphelin" : c.key}</td>
                     <td>{c.type ?? "?"}</td>
-                    <td><a href={`#/map?wid=${c.wid}&x=${c.x}&z=${c.z}`}>{c.x}, {c.y}, {c.z}</a></td>
+                    <td><a href={`#/map?wid=${c.wid}&x=${c.x}&z=${c.z}`}>{c.x}, {c.y}, {c.z}</a> · <a href={`#/squaremap?wid=${c.wid}&x=${c.x}&z=${c.z}`}>voir sur SquareMap</a></td>
                     <td className="right">{fmtNum(c.volume)}</td>
                     <td className="right">{fmtNum(c.deposits)} / {fmtNum(c.withdraws)} ({fmtNum(c.total_events)} év.)</td>
                     <td>{c.owner_uid === null ? "aucun" : <a href={`#/players/${c.owner_uid}`}>{c.owner_name ?? `uid ${c.owner_uid}`}</a>}</td>

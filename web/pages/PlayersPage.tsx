@@ -108,6 +108,7 @@ function PlayerDetailView({ uid }: { uid: number }) {
       <div className="flexrow" style={{ marginBottom: 8 }}>
         <a href="#/players">← liste des joueurs</a>
         {last ? <a href={mapLink(last.x ?? 0, last.z ?? 0, last.wid ?? 1)}>voir sa dernière position sur la carte</a> : null}
+        {last ? <a href={`#/squaremap?wid=${last.wid ?? 1}&x=${Math.round(last.x ?? 0)}&z=${Math.round(last.z ?? 0)}`}>voir sa dernière position sur SquareMap</a> : null}
       </div>
 
       <div className="grid cols-2">

@@ -5,7 +5,7 @@ import { KIND_LABEL, STATUS_LABEL, coordText } from "../labels.js";
 import { Card, Sev, StatusChip, KindChip, Toast } from "../ui.js";
 import { useLive } from "../live.js";
 
-const KINDS = ["", "theft", "grief", "anomaly", "chat"] as const;
+const KINDS = ["", "theft", "theft_shared", "dupe", "grief", "anomaly", "chat"] as const;
 const STATUSES = ["", "new", "seen", "closed"] as const;
 const PAGE = 60;
 
@@ -205,6 +205,8 @@ function IncidentDetail({ detail, note, setNote, patch }: {
               {coordText(detail.x, detail.y, detail.z)}
               {" "}
               {detail.x !== null ? <a href={`#/map?wid=${detail.wid ?? 1}&x=${Math.round(detail.x)}&z=${Math.round(detail.z ?? 0)}`}>voir sur la carte</a> : null}
+              {" "}
+              {detail.x !== null ? <a href={`#/squaremap?wid=${detail.wid ?? 1}&x=${Math.round(detail.x)}&z=${Math.round(detail.z ?? 0)}`}>voir sur SquareMap</a> : null}
             </b>
           </div>
           <div className="kv"><span className="k">conteneur</span><b>{detail.container_key ?? "-"}</b></div>

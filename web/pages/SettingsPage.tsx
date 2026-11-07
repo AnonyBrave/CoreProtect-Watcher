@@ -1,6 +1,6 @@
 /** Réglages : poids et seuils des détecteurs, whitelist, propos surveillés, Discord, jeton d'administration. */
 import { useEffect, useState } from "react";
-import { api, getAdminToken, setAdminToken } from "../api.js";
+import { api, getAdminToken, setAdminToken, squaremapWorldsList, type ImportFile } from "../api.js";
 import { lastCycleLabel, useLive } from "../live.js";
 import { Card, Toast } from "../ui.js";
 
@@ -86,6 +86,16 @@ export default function SettingsPage() {
   const [newName, setNewName] = useState("");
   const [toast, setToast] = useState<string | null>(null);
 
+  // Carte SquareMap : url de l'instance + correspondance wid du cache -> nom squaremap.
+  const [sqUrl, setSqUrl] = useState("");
+  const [sqMap, setSqMap] = useState<Record<number, string>>({});
+  const [sqNames, setSqNames] = useState<string[]>([]);
+  const [worldNames, setWorldNames] = useState<{ wid: number; name: string }[]>([]);
+
+  // Import de fichiers SQL (dépôt + journal d'import).
+  const [importDir, setImportDir] = useState("");
+  const [importFiles, setImportFiles] = useState<ImportFile[]>([]);
+
   useEffect(() => {
     api.settings().then((s) => {
       const st = s.settings;
@@ -102,6 +112,12 @@ export default function SettingsPage() {
       setExcluded(((st.excluded_worlds_json as number[]) ?? []).join(", "));
       const bl = (st.block_action_labels_json as Record<string, string>) ?? {};
       setLabels(bl);
+      const sm = (st.squaremap_json as { url?: string; worlds?: Record<string, string> }) ?? {};
+      setSqUrl(sm.url ?? "");
+      setSqMap(Object.fromEntries(Object.entries(sm.worlds ?? {}).map(([k, v]) => [Number(k), String(v)])));
+      api.worlds().then((ws) => setWorldNames(ws)).catch(() => {});
+      squaremapWorldsList().then((r) => setSqNames(r.worlds ?? [])).catch(() => {});
+      api.imports().then((r) => { setImportDir(r.dir); setImportFiles(r.files); }).catch(() => {});
     }).catch((e: Error) => setToast(e.message));
   }, []);
 
@@ -113,6 +129,14 @@ export default function SettingsPage() {
       chat_watch_json: { keywords: kw.split("\n").map((x) => x.trim()).filter(Boolean), commands: cmd.split("\n").map((x) => x.trim()).filter(Boolean) },
       discord_json: { url: url.trim(), min_severity: Number(minSev) || 60, username: user.trim() || "coreprotect-watcher" },
       excluded_worlds_json: excluded.split(",").map((x) => Number(x.trim())).filter((n) => Number.isFinite(n)),
+      squaremap_json: {
+        url: sqUrl.trim().replace(/\/+$/, ""),
+        worlds: Object.fromEntries(
+          Object.entries(sqMap)
+            .filter(([, v]) => String(v).trim() !== "")
+            .map(([k, v]) => [Number(k), String(v).trim()]),
+        ),
+      },
     };
     api.saveSettings(body)
       .then((r) => setToast(`réglages enregistrés (${r.changed.length} clé(s)) : recalcul complet demandé au prochain cycle`))
@@ -203,6 +227,55 @@ export default function SettingsPage() {
         <Card title="Mondes exclus de l'ingestion">
           <label>wid séparés par virgule</label>
           <input value={excluded} onChange={(e) => setExcluded(e.target.value)} placeholder="2, 3" />
+        </Card>
+
+        <Card title="Carte SquareMap (squaremap_json)">
+          <p className="muted">URL de l'instance (sans slash final). Les tuiles et les joueurs suivis viennent de cette instance ; le mapping associe chaque monde du cache Watcher à un monde SquareMap.</p>
+          <label>URL de base</label>
+          <input value={sqUrl} onChange={(e) => setSqUrl(e.target.value)} placeholder="https://dynmap.anonybrave.fr" />
+          <label>correspondance monde → SquareMap</label>
+          {worldNames.map((w) => (
+            <div className="flexrow" key={w.wid}>
+              <label style={{ width: 160 }}>{w.name} (wid {w.wid})</label>
+              <input
+                list="sqnames"
+                value={sqMap[w.wid] ?? ""}
+                onChange={(e) => setSqMap({ ...sqMap, [w.wid]: e.target.value })}
+                placeholder={`nom squaremap (ex : minecraft_${w.name.toLowerCase()})`}
+              />
+            </div>
+          ))}
+          <datalist id="sqnames">
+            {sqNames.map((n) => <option key={n} value={n}>{n}</option>)}
+          </datalist>
+          {sqNames.length === 0 ? <p className="muted">SquareMap injoignable pour lister les mondes disponibles</p> : null}
+        </Card>
+
+        <Card title="Import de fichiers SQL (dépôt d'ingestion)">
+          <p className="muted" style={{ marginBottom: 6 }}>
+            Dépôt : <b>{importDir || "?"}</b>. Dépose des exports mysqldump (<code>co_block.sql</code>,
+            <code> co_container.sql</code>, <code>co_item.sql</code>…) dans ce dossier, éventuellement gzip (<code>.sql.gz</code>).
+            Mode d'emploi : <code>mysqldump -h hôte -u utilisateur -p coreprotect co_block &gt; data/imports/co_block.sql</code>.
+          </p>
+          {importFiles.length === 0 ? (
+            <p className="muted">aucun fichier dans le dépôt</p>
+          ) : (
+            <table>
+              <thead><tr><th>fichier</th><th>état</th><th className="right">taille</th><th className="right">lignes importées</th><th>daté du</th></tr></thead>
+              <tbody>
+                {importFiles.map((f) => (
+                  <tr key={f.file}>
+                    <td>{f.file}</td>
+                    <td>{f.state === "done" ? "importé" : f.state === "pending" ? "en attente" : "échec de lecture"}</td>
+                    <td className="right">{(f.bytes / 1024).toFixed(0)} Ki</td>
+                    <td className="right">{f.rows >= 0 ? f.rows : "-"}</td>
+                    <td>{new Date((f.mtime ?? 0) * 1000).toLocaleString("fr-FR")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <button type="button" onClick={() => api.imports().then((r) => { setImportDir(r.dir); setImportFiles(r.files); })}>rafraîchir</button>
         </Card>
       </div>
 

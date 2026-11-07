@@ -5,7 +5,8 @@ import fastifyStatic from "@fastify/static";
 import FastifyCors from "@fastify/cors";
 import { cfg, DIST_DIR } from "./config.js";
 import { db } from "./db.js";
-import { prepareSync, syncCycle, backfillAll } from "./sync.js";
+import { prepareSync, syncCycle, backfillAll, preparedCount, liveUsable } from "./sync.js";
+import { importPending, importDir } from "./sqlimport.js";
 import { recomputeAll, cycleIncremental, initCursors } from "./pipeline.js";
 import { broadcast, notifyIncident } from "./notify.js";
 import { createApp } from "./api.js";
@@ -64,12 +65,24 @@ function publishIncidents(ids: number[]): void {
 
 let lastFullAt = 0;
 
-/** Un cycle : ingestion, puis rafraîchissement incrémental de l'analyse. */
+/** Un cycle : import des dumps si nécessaire, ingestion MySQL live si disponible, puis analyse. */
 async function runStep(): Promise<void> {
   const beforeBlk = maxRowid("blk");
   const beforeCont = maxRowid("container_evt");
 
-  const ins = await syncCycle();
+  // Dossiers de dump SQL (CP_SOURCE=files ou auto ; 'mysql' pur n'importe jamais).
+  let importedTotal = 0;
+  if (cfg.cpSource !== "mysql") {
+    const res = importPending(log);
+    for (const t of Object.values(res)) importedTotal += t;
+    // Des lignes importées touchent conteneurs, flux et propriété : tout est à recalculer.
+    if (importedTotal) stateSet("recompute_pending", "1");
+  }
+
+  let ins = { inserted: {} as Record<string, number>, total: 0 };
+  if (cfg.cpSource !== "files" && liveUsable()) {
+    ins = await syncCycle();
+  }
 
   const full = consumeRecomputeFlag() || (lastFullAt && Date.now() / 1000 - lastFullAt >= cfg.fullRecomputeMinutes * 60);
   if (full) {
@@ -82,16 +95,17 @@ async function runStep(): Promise<void> {
   publishIncidents(out.incidentsNew);
   stateSet("last_cycle_at", String(Math.floor(Date.now() / 1000)));
 
-  if (ins.total || out.chunksTouched || out.physContainersNew || out.eventsScanned) {
+  if (ins.total || importedTotal || out.chunksTouched || out.physContainersNew || out.eventsScanned) {
     const kinds = Object.entries(out.byKind).map(([k, n]) => `${k}=${n}`).join(" ");
     log(
-      `[cycle] +${ins.total} lignes, ${out.chunksTouched} chunks, ` +
+      `[cycle] +${ins.total} lignes MySQL, +${importedTotal} importées, ${out.chunksTouched} chunks, ` +
         `${out.physContainersNew} conteneurs, ${out.eventsScanned} événements scannés, ` +
         `${out.incidentsNew.length} incidents ${kinds}`
     );
   }
   broadcast("cycle", {
     inserted: ins.total,
+    imported: importedTotal,
     chunksTouched: out.chunksTouched,
     physContainersNew: out.physContainersNew,
     eventsScanned: out.eventsScanned,
@@ -102,16 +116,35 @@ async function runStep(): Promise<void> {
 }
 
 async function boot(): Promise<void> {
-  await prepareSync();
+  const source = cfg.cpSource;
+  let live = false;
+  if (source !== "files") {
+    try {
+      await prepareSync();
+      live = preparedCount() > 0;
+      log(`[sync] ${live ? "réplication MySQL prête" : "aucune table MySQL exploitable"} (CP_SOURCE=${source})`);
+    } catch (e) {
+      log(`[sync] MySQL indisponible : ${(e as Error).message}`);
+      if (source === "mysql") throw e; // 'mysql' exige la base live ; 'auto' bascule sur les fichiers SQL.
+    }
+  }
 
   const rows = (db.prepare("SELECT COUNT(*) c FROM blk").get() as { c: number }).c;
   if (!rows) {
-    log("[backfill] premier lancement, copie complète depuis MySQL…");
-    const n = await backfillAll(log);
+    let n = 0;
+    if (live && source !== "files") {
+      log("[backfill] premier lancement, copie complète depuis MySQL…");
+      n += await backfillAll(log);
+    }
+    if (source !== "mysql") {
+      log(`[import] dumps SQL depuis ${importDir()}…`);
+      const res = importPending(log);
+      for (const t of Object.values(res)) n += t;
+    }
     log(`[backfill] terminé : ${n} lignes`);
   }
 
-  // Premier cycle : recomputation lourde (chunk_stat, clusters, conteneurs, propriété).
+  // Premier cycle : recomputation lourde (chunk_stat, clusters, conteneurs, propriété, copropriétaires).
   stateSet("recompute_pending", "1");
   initCursors(); // les détecteurs démarrent à la position courante d'ingestion
 

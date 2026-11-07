@@ -2,6 +2,8 @@
 
 export const KIND_LABEL: Record<string, string> = {
   theft: "Vol",
+  theft_shared: "Vol entre copropriétaires",
+  dupe: "Duplication",
   grief: "Grief",
   anomaly: "Anomalie",
   chat: "Propos / commande",
@@ -10,6 +12,7 @@ export const KIND_LABEL: Record<string, string> = {
 export const STATE_LABEL: Record<string, string> = {
   owned: "possédé",
   public: "public",
+  shared: "partagé",
   ambiguous: "ambigu",
   untracked: "non suivi",
 };

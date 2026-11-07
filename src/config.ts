@@ -39,6 +39,13 @@ function resolveDbFile(): string {
   return existsSync(legacy) && !existsSync(current) ? legacy : current;
 }
 
+export type SourceMode = "auto" | "mysql" | "files";
+
+const rawSource = env("CP_SOURCE", "auto");
+if (!["auto", "mysql", "files"].includes(rawSource)) {
+  throw new Error(`CP_SOURCE invalide : ${rawSource} (attendu auto|mysql|files)`);
+}
+
 export const cfg = {
   mysql: {
     host: env("CP_DB_HOST", "192.168.1.30"),
@@ -53,6 +60,10 @@ export const cfg = {
   dbFile: resolveDbFile(),
   ingestSeconds: Number(env("CP_INGEST_SECONDS", "30")),
   fullRecomputeMinutes: Number(env("CP_RECOMPUTE_MINUTES", "10")),
+  /** Source de données : mysql (live), files (dumps SQL surveillés), auto (MySQL si joignable, sinon fichiers). */
+  cpSource: rawSource as SourceMode,
+  /** Dossier des .sql / .sql.gz mysqldump à ingérer. */
+  importDir: env("CP_IMPORT_DIR", path.join(ROOT, "data", "imports")),
 };
 
 export const WEB_DIR = path.join(ROOT, "web");

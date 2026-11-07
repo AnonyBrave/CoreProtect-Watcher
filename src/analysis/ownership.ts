@@ -106,9 +106,12 @@ export function rebuildAggregates(keys?: Set<string>): void {
      WHERE key=@key`
   );
   const usageDel = db.prepare("DELETE FROM usage_stat WHERE key=@key");
+  // dep_vol / wdr_vol : volumes déposés et retirés par joueur (flux net d'un co-détecteur de partage).
   const usageIns = db.prepare(
-    `INSERT INTO usage_stat(key,uid,deposits,withdraws,events,volume,first_time,last_time)
-     SELECT @key, e.uid, SUM(e.action=${DEP}), SUM(e.action!=${DEP}), COUNT(*), SUM(e.amount), MIN(e.time), MAX(e.time)
+    `INSERT INTO usage_stat(key,uid,deposits,withdraws,events,volume,first_time,last_time,dep_vol,wdr_vol)
+     SELECT @key, e.uid, SUM(e.action=${DEP}), SUM(e.action!=${DEP}), COUNT(*), SUM(e.amount), MIN(e.time), MAX(e.time),
+            COALESCE(SUM(CASE WHEN e.action=${DEP} THEN e.amount ELSE 0 END),0),
+            COALESCE(SUM(CASE WHEN e.action!=${DEP} THEN e.amount ELSE 0 END),0)
      FROM container_evt e JOIN player p ON p.uid=e.uid
      WHERE e.phys_key=@key AND e.rolled_back=0 AND p.is_fake=0
      GROUP BY e.uid`
@@ -249,10 +252,73 @@ export function computeOwners(keys?: Set<string>): number {
   return targets.length;
 }
 
+/** Copropriétaires d'un conteneur : part du volume déposé + événements suffisants.
+ *  Un conteneur est "partagé" dès qu'il a au moins deux membres qualifiés ; l'état 'shared'
+ *  remplace owned/ambiguous pour la détection (un retrait par un non-membre reste un vol classique,
+ *  un retrait par un membre devient suspect via le déséquilibre du flux net). */
+export function computeShares(): number {
+  const t = th();
+  const minShare = t.co_owner_min_share ?? 0.35;
+  const minEvents = t.co_owner_min_events ?? 4;
+
+  const rows = db.prepare(
+    `SELECT u.key,u.uid,u.deposits,u.withdraws,u.events,u.volume,
+            COALESCE(u.dep_vol,0) dep_vol,COALESCE(u.wdr_vol,0) wdr_vol,u.first_time,u.last_time
+     FROM usage_stat u JOIN player p ON p.uid=u.uid WHERE p.is_fake=0`
+  ).all() as {
+    key: string; uid: number; deposits: number; withdraws: number; events: number; volume: number;
+    dep_vol: number; wdr_vol: number; first_time: number | null; last_time: number | null;
+  }[];
+
+  const byKey = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const arr = byKey.get(r.key) ?? [];
+    arr.push(r);
+    byKey.set(r.key, arr);
+  }
+
+  db.prepare("DELETE FROM container_share").run();
+  const insShare = db.prepare(
+    `INSERT INTO container_share(key,uid,score,share,events,deposits,withdraws,dep_vol,wdr_vol,first_time,last_time,co_owner)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
+
+  const sharedKeys: string[] = [];
+  db.transaction(() => {
+    for (const [key, arr] of byKey) {
+      const totalDep = arr.reduce((s, r) => s + r.dep_vol, 0);
+      const totalVol = arr.reduce((s, r) => s + r.volume, 0) || 1;
+      let qualified = 0;
+      for (const r of arr) {
+        const share = totalDep > 0 ? r.dep_vol / totalDep : 0; // part du volume déposé dans le groupe
+        const score = r.volume / totalVol;                    // poids global de l'usage du joueur
+        const co = share >= minShare && r.events >= minEvents ? 1 : 0;
+        if (co) qualified++;
+        insShare.run(key, r.uid, +score.toFixed(4), +share.toFixed(4), r.events, r.deposits, r.withdraws,
+          r.dep_vol, r.wdr_vol, r.first_time, r.last_time, co);
+      }
+      if (qualified >= 2) sharedKeys.push(key);
+    }
+  })();
+
+  // La propriété verrouillée par preuve solide (pose du bloc) garde son propriétaire ; le conteneur devient
+  // 'shared' dès qu'il compte deux copropriétaires qualifiés : un retrait par un membre est suspect via le
+  // déséquilibre du flux net, et l'état 'owned' masquerait le vol entre co-détenteurs. Les clés qui ne sont
+  // plus qualifiées reprennent l'état calculé par computeOwners juste avant, rien à réécrire ici.
+  if (sharedKeys.length) {
+    const marks = sharedKeys.map(() => "?").join(",");
+    db.prepare(`UPDATE container_owner SET trust_state='shared' WHERE key IN (${marks})`).run(...sharedKeys);
+  }
+
+  return sharedKeys.length;
+}
+
 /** Cycle complet sur les conteneurs. */
 export function refreshContainers(): number {
   buildPhysContainers();
   assignEventsToPhys(true);
   rebuildAggregates();
-  return computeOwners();
+  const n = computeOwners();
+  computeShares();
+  return n;
 }

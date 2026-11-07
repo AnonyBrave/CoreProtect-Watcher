@@ -25,7 +25,7 @@ export function ensureCursor(key: string, rowid: number): void {
 
 /** Clef d'anti-doublon : l'index unique incident(kind,event_rowid) doit distinguer les tables sources.
  *  Les tags sont des plages disjointes (blk est négatif), donc un rowid identique dans deux tables ne fusionne pas. */
-const TABLE_TAG: Record<string, number> = { container_evt: 1_000_000_000, session_evt: 2_000_000_000, chat_evt: 3_000_000_000, command_evt: 4_000_000_000, blk: -1_000_000_000 };
+const TABLE_TAG: Record<string, number> = { container_evt: 1_000_000_000, session_evt: 2_000_000_000, chat_evt: 3_000_000_000, command_evt: 4_000_000_000, item_evt: 5_000_000_000, blk: -1_000_000_000 };
 
 export function eventKey(table: string, rowid: number): number {
   return (TABLE_TAG[table] ?? 0) + rowid;
@@ -40,6 +40,7 @@ export const GRIEF_COLS = [...BASE_COLS, "victim_uid", "item_id", "amount", "win
 export const TNT_COLS = [...BASE_COLS, "victim_uid", "amount", "window_start", "window_end", ...TAIL_COLS];
 export const CHAT_COLS = [...BASE_COLS, "window_start", "window_end", ...TAIL_COLS];
 export const CHURN_COLS = CHAT_COLS; // mêmes colonnes : churn et chat n'ont pas de victime ni conteneur.
+export const DUPE_COLS = THEFT_COLS; // la duplication se lit comme un vol : même forme de preuve (conteneur, item, flux).
 
 /** INSERT calé sur les colonnes : un seul point de construction évite les décalages placeholder/colonnes. */
 export function insertIncident(columns: readonly string[]): ReturnType<typeof db.prepare> {
