@@ -57,6 +57,7 @@ export default function OverviewPage() {
         </Card>
         <Card title="Conteneurs">
           <div className="kv"><span className="k">possédés</span><b>{states.get("owned")?.n ?? 0}</b></div>
+          <div className="kv"><span className="k">partagés (copropriétaires)</span><b>{states.get("shared")?.n ?? 0}</b></div>
           <div className="kv"><span className="k">publics</span><b>{states.get("public")?.n ?? 0}</b></div>
           <div className="kv"><span className="k">ambigus</span><b>{states.get("ambiguous")?.n ?? 0}</b></div>
           <div className="kv"><span className="k">non suivis</span><b>{states.get("untracked")?.n ?? 0}</b></div>
@@ -151,7 +152,11 @@ export default function OverviewPage() {
                     <td><Sev sev={Number(r.severity)} /></td>
                     <td>{String(r.actor ?? "?")}</td>
                     <td>{String(r.victim ?? "-")}</td>
-                    <td className="muted">{r.x === null ? "-" : `${r.x},${r.z}`}</td>
+                    <td className="muted">
+                      {r.x === null ? "-" : `${r.x},${r.z}`}
+                      {" "}
+                      {(r.x !== null && r.wid != null) ? <a href={`#/squaremap?wid=${Number(r.wid)}&x=${Math.round(Number(r.x))}&z=${Math.round(Number(r.z ?? 0))}`}>carte</a> : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -163,7 +168,7 @@ export default function OverviewPage() {
       <div style={{ marginTop: 12 }} className="card">
         <h3>État des conteneurs (répartition)</h3>
         <div className="flexrow">
-          {["owned", "public", "ambiguous", "untracked"].map((s) => (
+          {["owned", "shared", "public", "ambiguous", "untracked"].map((s) => (
             <span key={s} className="flexrow">
               <StateChip state={s} /> <b>{states.get(s)?.n ?? 0}</b>
               <span className="muted">· {fmtNum(states.get(s)?.volume)} objets</span>

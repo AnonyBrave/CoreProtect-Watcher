@@ -143,6 +143,7 @@ export interface ScoreRow {
   grief_s: number;
   anomaly_s: number;
   chat_s: number;
+  dupe_s: number;
   composite: number;
 }
 

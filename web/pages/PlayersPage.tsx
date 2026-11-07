@@ -19,6 +19,7 @@ const SESSION_ACTION = (a: number): string => (a === 0 ? "connexion" : "déconne
 
 const SERIES = [
   { key: "theft_s", label: "vol", color: "#d29922" },
+  { key: "dupe_s", label: "duplication", color: "#8a3fa3" },
   { key: "grief_s", label: "grief", color: "#db4b4b" },
   { key: "anomaly_s", label: "anomalie", color: "#5678a8" },
   { key: "chat_s", label: "propos", color: "#b07aa0" },

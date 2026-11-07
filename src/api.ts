@@ -131,8 +131,8 @@ export function createApp(): FastifyInstance {
         .all(),
       recent: db
         .prepare(
-          `SELECT i.id,i.kind,i.severity,i.status,i.created_at,i.uid,p.name actor,i.victim_uid,v.name victim,i.x,i.z,i.amount
-           FROM incident i LEFT JOIN player p ON p.uid=i.uid LEFT JOIN player v ON v.uid=i.victim_uid
+          `SELECT i.id,i.kind,i.severity,i.status,i.created_at,i.uid,p.name actor,i.victim_uid,v.name victim,i.x,i.z,i.amount,i.wid,w.name world
+           FROM incident i LEFT JOIN player p ON p.uid=i.uid LEFT JOIN player v ON v.uid=i.victim_uid LEFT JOIN world w ON w.wid=i.wid
            WHERE i.test=0 ORDER BY i.created_at DESC, i.id DESC LIMIT 12`
         )
         .all(),
@@ -208,7 +208,7 @@ export function createApp(): FastifyInstance {
 
     const rows = db
       .prepare(
-        `SELECT ps.uid,p.name,ps.day,ps.theft_s,ps.grief_s,ps.anomaly_s,ps.chat_s,ps.composite
+        `SELECT ps.uid,p.name,ps.day,ps.theft_s,ps.grief_s,ps.anomaly_s,ps.chat_s,ps.dupe_s,ps.composite
          FROM player_score ps JOIN player p ON p.uid=ps.uid
          WHERE (? IS NULL OR ps.uid=?) AND ps.day >= ? AND p.is_fake=0
          ORDER BY ps.day`

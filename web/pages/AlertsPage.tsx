@@ -158,7 +158,11 @@ export default function AlertsPage({ route }: { route: string }) {
                 <td><Sev sev={i.severity} /></td>
                 <td>{i.actor ?? "-"}</td>
                 <td>{i.victim ?? "-"}</td>
-                <td className="muted">{coordText(i.x, i.y, i.z)} {i.world ? `· ${i.world}` : ""}</td>
+                <td className="muted">
+                  {coordText(i.x, i.y, i.z)} {i.world ? `· ${i.world}` : ""}
+                  {" "}
+                  {(i.x !== null && (i as { wid?: number }).wid) ? <a href={`#/squaremap?wid=${(i as { wid: number }).wid}&x=${Math.round(i.x!)}&z=${Math.round(i.z ?? 0)}`}>carte</a> : null}
+                </td>
                 <td className="right">{fmtNum(i.amount)}</td>
                 <td><StatusChip status={i.status} /></td>
               </tr>
