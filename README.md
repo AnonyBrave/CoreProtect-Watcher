@@ -1,6 +1,6 @@
 # CoreProtect-Watcher
 
-Monitoring for a Minecraft server based on [CoreProtect](https://github.com/RayFarkas/CorePro) logs: the agent copies MySQL events into a local SQLite cache, detects incidents (thefts, griefing, mining anomalies, suspicious chat), and exposes a web interface + API for administrators.
+Monitoring for a Minecraft server based on [CoreProtect]((https://github.com/PlayPro/CoreProtect)) logs: the agent copies MySQL events into a local SQLite cache, detects incidents (thefts, griefing, mining anomalies, suspicious chat), and exposes a web interface + API for administrators.
 
 > **Warning — vibe-coded project.** This repository is AI-generated/assisted, experimental and continuously evolving. It has not received a formal code review, security audit, production QA cycle, or performance guarantee. Use it at your own risk on trusted networks only, with read-only MySQL credentials, strong admin tokens, and backups before deployment. Public GHCR images are not signed; pull from an image tag you trust.
 
