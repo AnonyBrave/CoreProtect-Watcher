@@ -1,7 +1,7 @@
 /** Alertes : filtres, flux en direct, preuve décodée et suivi administrateur (statut + note). */
 import { useEffect, useState } from "react";
 import { api, csvUrl, fmtDate, fmtNum, type FullIncident, type IncidentRow } from "../api.js";
-import { KIND_LABEL, STATUS_LABEL, coordText } from "../labels.js";
+import { KIND_LABEL, STATUS_CLASS, STATUS_LABEL, coordText } from "../labels.js";
 import { Card, Sev, StatusChip, KindChip, Toast } from "../ui.js";
 import { useLive } from "../live.js";
 
@@ -219,9 +219,9 @@ function IncidentDetail({ detail, note, setNote, patch }: {
 
           <h3>Suivi administrateur</h3>
           <div className="flexrow">
-            <button type="button" onClick={() => patch({ status: "new" })}>nouvel</button>
-            <button type="button" onClick={() => patch({ status: "seen" })}>vu</button>
-            <button type="button" onClick={() => patch({ status: "closed" })}>fermé</button>
+            <button type="button" className={`st-btn ${STATUS_CLASS.new}${detail.status === "new" ? " active" : ""}`} onClick={() => patch({ status: "new" })}>nouvel</button>
+            <button type="button" className={`st-btn ${STATUS_CLASS.seen}${detail.status === "seen" ? " active" : ""}`} onClick={() => patch({ status: "seen" })}>vu</button>
+            <button type="button" className={`st-btn ${STATUS_CLASS.closed}${detail.status === "closed" ? " active" : ""}`} onClick={() => patch({ status: "closed" })}>fermé</button>
             <span className="muted">jeton d'administration défini dans l'onglet Réglages, enregistré localement</span>
           </div>
           <label>note interne</label>

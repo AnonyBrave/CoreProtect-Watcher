@@ -23,6 +23,8 @@ export const STATUS_LABEL: Record<string, string> = {
   closed: "fermé",
 };
 
+export const STATUS_CLASS: Record<string, string> = { new: "st-new", seen: "st-seen", closed: "st-closed" };
+
 export const stateClass = (state: string): string => (state === "owned" ? "owned" : state === "public" ? "public" : state === "ambiguous" ? "ambiguous" : "untracked");
 
 /** Couleur de la pastille de sévérité selon les paliers d'alerte. */

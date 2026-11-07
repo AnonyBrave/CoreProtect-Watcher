@@ -18,11 +18,13 @@ export const StateChip = ({ state }: { state: string }) => (
 );
 
 export const StatusChip = ({ status, count = 0 }: { status: string; count?: number }) => (
-  <span className="chip untracked">
+  <span className={`chip ${STATUS_CLASS[status] ?? "untracked"}`}>
     {STATUS_LABEL[status] ?? status}
     {count > 0 ? ` · ${count}` : ""}
   </span>
 );
+
+const STATUS_CLASS: Record<string, string> = { new: "st-new", seen: "st-seen", closed: "st-closed" };
 
 export const KindChip = ({ kind }: { kind: string }) => (
   <span className="chip public">{KIND_LABEL[kind] ?? kind}</span>
