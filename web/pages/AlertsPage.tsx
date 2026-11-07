@@ -161,7 +161,7 @@ export default function AlertsPage({ route }: { route: string }) {
                 <td className="muted">
                   {coordText(i.x, i.y, i.z)} {i.world ? `· ${i.world}` : ""}
                   {" "}
-                  {(i.x !== null && (i as { wid?: number }).wid) ? <a href={`#/squaremap?wid=${(i as { wid: number }).wid}&x=${Math.round(i.x!)}&z=${Math.round(i.z ?? 0)}`}>carte</a> : null}
+                  {(i.x !== null && (i as { wid?: number }).wid) ? <a href={`#/map?wid=${(i as { wid: number }).wid}&x=${Math.round(i.x!)}&z=${Math.round(i.z ?? 0)}`}>carte</a> : null}
                 </td>
                 <td className="right">{fmtNum(i.amount)}</td>
                 <td><StatusChip status={i.status} /></td>
@@ -210,7 +210,7 @@ function IncidentDetail({ detail, note, setNote, patch }: {
               {" "}
               {detail.x !== null ? <a href={`#/map?wid=${detail.wid ?? 1}&x=${Math.round(detail.x)}&z=${Math.round(detail.z ?? 0)}`}>voir sur la carte</a> : null}
               {" "}
-              {detail.x !== null ? <a href={`#/squaremap?wid=${detail.wid ?? 1}&x=${Math.round(detail.x)}&z=${Math.round(detail.z ?? 0)}`}>voir sur SquareMap</a> : null}
+              {detail.x !== null ? <a href={`#/map?wid=${detail.wid ?? 1}&x=${Math.round(detail.x)}&z=${Math.round(detail.z ?? 0)}`}>voir sur la carte</a> : null}
             </b>
           </div>
           <div className="kv"><span className="k">conteneur</span><b>{detail.container_key ?? "-"}</b></div>

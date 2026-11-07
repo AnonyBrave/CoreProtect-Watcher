@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend } from "recharts";
 import { api, fmtDate, fmtDay, fmtNum, type OverviewData, type ScoreRow } from "../api.js";
 import { KIND_LABEL, playerColor } from "../labels.js";
-import { Card, Bar, Sev, StateChip, LiveLine } from "../ui.js";
+import { Card, Bar, Sev, StateChip, StatusChip, LiveLine } from "../ui.js";
 import { useLive, lastCycleLabel } from "../live.js";
 
 export default function OverviewPage() {
@@ -143,7 +143,7 @@ export default function OverviewPage() {
             <div className="muted">Aucun incident réel enregistré pour le moment.</div>
           ) : (
             <table>
-              <thead><tr><th>date</th><th>nature</th><th>sév.</th><th>acteur</th><th>propriétaire</th><th>position</th></tr></thead>
+              <thead><tr><th>date</th><th>nature</th><th>sév.</th><th>acteur</th><th>propriétaire</th><th>position</th><th>statut</th></tr></thead>
               <tbody>
                 {ov.recent.map((r: Record<string, unknown>) => (
                   <tr key={String(r.id)} onClick={() => (location.hash = `#/alerts/${r.id}`)}>
@@ -155,7 +155,8 @@ export default function OverviewPage() {
                     <td className="muted">
                       {r.x === null ? "-" : `${r.x},${r.z}`}
                       {" "}
-                      {(r.x !== null && r.wid != null) ? <a href={`#/squaremap?wid=${Number(r.wid)}&x=${Math.round(Number(r.x))}&z=${Math.round(Number(r.z ?? 0))}`}>carte</a> : null}
+                      {(r.x !== null && r.wid != null) ? <a href={`#/map?wid=${Number(r.wid)}&x=${Math.round(Number(r.x))}&z=${Math.round(Number(r.z ?? 0))}`}>carte</a> : null}
+                      <StatusChip status={String(r.status)} />
                     </td>
                   </tr>
                 ))}
