@@ -169,6 +169,8 @@ export default function SquareMapPage({ route }: { route: string }) {
     const el = divRef.current;
     if (!el) return;
     const map = L.map(el, { crs: L.CRS.Simple, attributionControl: false, preferCanvas: true });
+    // Handle debug pour vérifier le rendu depuis la console du navigateur.
+    (window as unknown as Record<string, unknown>).__cpwMap = map;
     chunksRef.current = L.layerGroup().addTo(map);
     housesRef.current = L.layerGroup().addTo(map);
     contRef.current = L.layerGroup().addTo(map);
