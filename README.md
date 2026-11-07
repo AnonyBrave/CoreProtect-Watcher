@@ -47,6 +47,43 @@ curl http://localhost:8765/api/worlds
 
 Premier lancement : backfill complet depuis MySQL puis recomputation lourde, selon la taille des tables CoreProtect (quelques minutes sur un gros serveur).
 
+## Déploiement serveur avec DockGe (image privée sur ghcr.io)
+
+Le workflow `.github/workflows/docker.yml` construit l'image à chaque push sur `main`, pousse les étiquettes `latest` et `sha-<commit>` sur **ghcr.io/anonybrave/coreprotect-watcher** et force la visibilité du package en **privé**. Il utilise uniquement le jeton du workflow (`GITHUB_TOKEN`) : aucun secret n'est écrit dans la stack.
+
+Stack à coller dans DockGe (le serveur tire l'image du registre, il ne build pas depuis GitHub) :
+
+```yaml
+name: coreprotect-watcher
+services:
+  watcher:
+    image: ghcr.io/anonybrave/coreprotect-watcher:latest
+    container_name: coreprotect-watcher
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      CP_WATCHER_PORT: "8765"
+      CP_SQLITE_FILE: /app/data/coreprotect-watcher.db
+      TZ: Europe/Paris
+    ports:
+      - 8765:8765
+    volumes:
+      - /mnt/ZFS_RAID_1/coreprotect-watcher:/app/data
+    init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+networks: {}
+```
+
+- Dans DockGe, enregistrez un accès au registre `ghcr.io` : nom d'utilisateur GitHub (`AnonyBrave`) et un **PAT classic scopé `read:packages`** (et rien d'autre). DockGe utilise ce secret pour le pull ; il n'apparaît pas dans le YAML.
+- Activer « surveiller les nouveaux déploiements » sur la stack : à chaque nouvelle image publiée par GitHub Actions, DockGe détecte un nouveau digest, retire l'ancien conteneur et relance avec la dernière étiquette. C'est ce qui remplace l'affichage « skipped – no image to be pulled », dû au fait que la stack ne contenait aucune référence d'image (`image:`), donc DockGe n'avait rien à tirer du registre.
+- Épingler une version : remplacer `:latest` par `:sha-xxxxxxx` (l'étiquette du commit) pour figer le déploiement, puis « Redéployer ».
+- Ne **jamais** mettre un PAT dans `build.context: https://<token>@github.com/...` : le token reste lisible dans la stack, les journaux et l'UI.
+
 ## Import de fichiers SQL (sans serveur MySQL)
 
 Le cache SQLite peut être alimenté par des exports `mysqldump` posés dans le dépôt d'import (`CP_IMPORT_DIR`, défaut `data/imports`) :
@@ -87,6 +124,7 @@ gzip data/imports/co_item.sql        # les .sql.gz sont acceptés
 
 - `.env` porte le mot de passe MySQL : il est ignoré par git, seules les coordonnées fictives de `.env.example` sont publiées.
 - Le jeton d'admin protège les écritures API (`POST /api/settings`, `POST /api/incidents/:id`, `POST /api/cycle/run`). Il est à personnaliser ; si un navigateur a gardé l'ancien jeton, le ressaisir dans Réglages.
+- Un PAT GitHub ne se met que dans le magasin d'identifiants (Git) ou les secrets de DockGe : jamais dans une stack Compose (`context:` en URL git), ni dans `.env` commité. Pour le pull des images, un PAT **classic scopé `read:packages`** suffit ; le package GHCR reste privé.
 - L'UI n'est pas authentifiée : la réserver aux réseaux de confiance (LAN / VPN), et mettre un jeton fort en face des écritures.
 
 ## API
