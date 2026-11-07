@@ -270,7 +270,12 @@ export default function MapPage({ route }: { route: string }) {
         }
         if (tilesOn) {
           const t = L.tileLayer(`${cfg.url}/tiles/${worldName}/{z}/{x}_{y}.png`, {
-            tileSize: 512, minZoom: 0, maxZoom: zmax, noWrap: true,
+            tileSize: 512,
+            minZoom: 0,
+            maxZoom: zmax,
+            minNativeZoom: 0,
+            maxNativeZoom: zoomMax, // au-delà du zoom généré par SquareMap, les tuiles existantes sont agrandies (pas de fond noir)
+            noWrap: true,
           });
           t.addTo(map);
           tileRef.current = t;
