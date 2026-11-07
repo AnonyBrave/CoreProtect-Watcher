@@ -172,6 +172,7 @@ export const api = {
   saveSettings: (body: Record<string, unknown>) =>
     json<{ ok: boolean; changed: string[] }>("/api/settings", { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) }),
   cycleRun: () => json<{ ok: boolean }>(`/api/cycle/run`, { method: "POST", headers: adminHeaders(), body: "{}" }),
+  imports: () => json<{ dir: string; files: ImportFile[] }>("/api/imports"),
 };
 
 export const csvUrl = (kind = ""): string => `/api/export.csv${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`;

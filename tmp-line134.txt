@@ -1,2 +1,0 @@
-          `SELECT i.id,i.kind,i.severity,i.status,i.created_at,i.uid,p.name actor,i.victim_uid,v.name victim,i.x,i.z,i.amount
-           FROM incident i LEFT JOIN player p ON p.uid=i.uid LEFT JOIN player v ON v.uid=i.victim_uid

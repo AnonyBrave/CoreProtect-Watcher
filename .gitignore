@@ -20,3 +20,9 @@ data/
 Thumbs.db
 .vscode/
 .idea/
+
+# Artefacts temporaires
+tmp-*
+*.tmp
+*.bak
+*.orig
