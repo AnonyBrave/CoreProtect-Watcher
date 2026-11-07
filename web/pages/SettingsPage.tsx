@@ -1,6 +1,6 @@
 /** Réglages : poids et seuils des détecteurs, whitelist, propos surveillés, Discord, jeton d'administration. */
 import { useEffect, useState } from "react";
-import { api, getAdminToken, setAdminToken, squaremapWorldsList, type ImportFile } from "../api.js";
+import { api, getAdminToken, setAdminToken, imports as fetchImports, squaremapWorldsList, type ImportFile } from "../api.js";
 import { lastCycleLabel, useLive } from "../live.js";
 import { Card, Toast } from "../ui.js";
 
@@ -117,7 +117,7 @@ export default function SettingsPage() {
       setSqMap(Object.fromEntries(Object.entries(sm.worlds ?? {}).map(([k, v]) => [Number(k), String(v)])));
       api.worlds().then((ws) => setWorldNames(ws)).catch(() => {});
       squaremapWorldsList().then((r) => setSqNames((r.worlds ?? []).map((w) => w.name))).catch(() => {});
-      api.imports().then((r) => { setImportDir(r.dir); setImportFiles(r.files); }).catch(() => {});
+      fetchImports().then((r) => { setImportDir(r.dir); setImportFiles(r.files); }).catch(() => {});
     }).catch((e: Error) => setToast(e.message));
   }, []);
 
@@ -275,7 +275,7 @@ export default function SettingsPage() {
               </tbody>
             </table>
           )}
-          <button type="button" onClick={() => api.imports().then((r) => { setImportDir(r.dir); setImportFiles(r.files); })}>rafraîchir</button>
+          <button type="button" onClick={() => fetchImports().then((r) => { setImportDir(r.dir); setImportFiles(r.files); })}>rafraîchir</button>
         </Card>
       </div>
 
