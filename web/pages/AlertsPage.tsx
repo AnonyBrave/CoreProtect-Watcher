@@ -105,7 +105,7 @@ export default function AlertsPage({ route }: { route: string }) {
     const target = selIdx === -1 ? (delta > 0 ? 0 : ids.length - 1) : selIdx + delta;
     if (target < 0 || target >= ids.length) return;
     setPage(Math.floor(target / PAGE));
-    location.hash = #/alerts/;
+    location.hash = `#/alerts/${ids[target]}`;
   };
   const prevEnabled = ids.length > 0 && (selIdx === -1 ? ids.length > 1 : selIdx > 0);
   const nextEnabled = ids.length > 0 && (selIdx === -1 || selIdx < ids.length - 1);
