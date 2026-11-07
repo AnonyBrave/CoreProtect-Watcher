@@ -1,57 +1,57 @@
 # CoreProtect-Watcher
 
-Surveillance d'un serveur Minecraft à partir des journaux de [CoreProtect](https://github.com/RayFarkas/CorePro) : le robot copie les événements MySQL dans un cache SQLite local, détecte les incidents (vols, grief, anomalies de minage, propos suspects), et expose une interface web + API pour les administrateurs.
+Monitoring for a Minecraft server based on [CoreProtect](https://github.com/RayFarkas/CorePro) logs: the agent copies MySQL events into a local SQLite cache, detects incidents (thefts, griefing, mining anomalies, suspicious chat), and exposes a web interface + API for administrators.
 
-Nom du paquet npm : `coreprotect-watcher`. L'interface s'affiche sous « CoreProtect-Watcher ». Les anciens noms `cp-sentry` restent acceptés en compatibilité (`CP_SENTRY_PORT`, `data/cp-sentry.db`) pour ne rien casser au démarrage.
+npm package name: `coreprotect-watcher`. The interface is displayed as “CoreProtect-Watcher”. The old names `cp-sentry` remain accepted for compatibility (`CP_SENTRY_PORT`, `data/cp-sentry.db`) so that startup does not break.
 
 ## Architecture
 
-- **Ingestion** : cycle toutes les `CP_INGEST_SECONDS` (120 s dans `.env`), copie incrémentale MySQL → SQLite via un curseur sauvegardé. Trois modes (`CP_SOURCE`) : `auto` (MySQL si joignable, sinon fichiers déposés), `mysql` (flux direct uniquement), `files` (dépôt de dumps SQL, sans serveur).
-- **Analyse incrémentale** : statistiques par chunk, clusters physiques de conteneurs, propriété des conteneurs et copropriétaires (un conteneur peut appartenir à plusieurs joueurs), détection `theft`, `theft_shared` (vol entre copropriétaires), `dupe` (trois signatures : copie-remplacement dans un conteneur, création au sol, clonage de chunk), `grief`, `anomaly`, `chat`, score de risque joueur. Recomputation complète tous les `CP_RECOMPUTE_MINUTES`.
-- **API + UI** : Fastify écoute sur `0.0.0.0:CP_WATCHER_PORT` (8765) et sert `dist/` (UI construite par Vite), les routes `/api/*`, un flux SSE (`/api/stream`) et des notifications Discord filtrées par sévérité.
-- **Carte SquareMap** : l'onglet unique « Carte » affiche les tuiles de l'instance SquareMap (Leaflet, projection `CRS.Simple`), avec les calques Watcher posés dessus : incidents cliquables vers l'alerte, conteneurs colorés selon leur état de propriété, densité de blocs posés par chunk, emprises des maisons, joueurs suivis en direct. Les tuiles et les JSON sont relayés côté serveur (`/api/squaremap/*`) pour éviter le CORS ; la correspondance monde Watcher → monde SquareMap se règle dans Réglages (`squaremap_json`).
-- **Données** : tout le cache est dans `data/coreprotect-watcher.db` (SQLite). MySQL n'est jamais modifié : connexion en **lecture seule**.
+- **Ingestion**: a cycle every `CP_INGEST_SECONDS` (120 s in `.env`), incremental MySQL → SQLite copy using a saved cursor. Three modes (`CP_SOURCE`): `auto` (MySQL when reachable, otherwise dropped files), `mysql` (direct stream only), `files` (SQL dumps copied into the import folder, no server).
+- **Incremental analysis**: statistics per chunk, physical clusters of containers, container ownership and co-owners (one container can belong to several players), detection of `theft`, `theft_shared` (a theft between co-owners), `dupe` (three signatures: replace-in-container, ground creation, chunk cloning), `grief`, `anomaly`, `chat`, player risk score. Full recomputation every `CP_RECOMPUTE_MINUTES`.
+- **API + UI**: Fastify listens on `0.0.0.0:CP_WATCHER_PORT` (8765) and serves `dist/` (UI built by Vite), the `/api/*` routes, an SSE stream (`/api/stream`), and Discord notifications filtered by severity.
+- **SquareMap map**: the single “Map” tab displays the tiles of the SquareMap instance (Leaflet, projection `CRS.Simple`), with Watcher layers placed on top: clickable incidents pointing to the alert, containers colored by ownership state, density of blocks placed per chunk, house footprints, live tracked players. Tiles and JSON are relayed server-side (`/api/squaremap/*`) to avoid CORS; the correspondence between a Watcher world and a SquareMap world is configured in Settings (`squaremap_json`).
+- **Data**: all cache lives in `data/coreprotect-watcher.db` (SQLite). MySQL is never modified: read-only connection.
 
-## Prérequis
+## Prerequisites
 
-- Node.js 22 LTS + npm (dev local)
-- Docker 24+ et Docker Compose v2 (version conteneurisée)
-- Un serveur MySQL CoreProtect joignable depuis la machine (accès lecture seule recommandé)
+- Node.js 22 LTS + npm (local dev)
+- Docker 24+ and Docker Compose v2 (containerized version)
+- A CoreProtect MySQL server reachable from the machine (read-only access recommended)
 
-## Lancement en local
+## Run locally
 
 ```bash
-cp .env.example .env      # puis remplir le mot de passe MySQL et le jeton d'admin
+cp .env.example .env      # then fill in the MySQL password and the admin token
 npm install
-npm run build:web         # construit dist/ servi par le serveur
-npm start                 # API + UI sur http://localhost:8765
-npm run typecheck         # vérification des types
+npm run build:web         # builds dist/ served by the API
+npm start                 # API + UI at http://localhost:8765
+npm run typecheck         # type checking
 ```
 
-En dev, `npm run dev:web` lance Vite sur 5173 avec un proxy `/api → 127.0.0.1:8765`. Le serveur doit tourner à côté.
+In dev, `npm run dev:web` launches Vite on 5173 with a proxy `/api → 127.0.0.1:8765`. The API server must be running alongside.
 
-## Lancement avec Docker
+## Run with Docker
 
-`.env` est lu par Compose (il n'est **jamais** commité) :
+`.env` is read by Compose (it is **never** committed):
 
 ```bash
-cp .env.example .env      # remplir le mot de passe MySQL + le jeton d'admin
+cp .env.example .env      # fill in the MySQL password + admin token
 docker compose up -d --build
 curl http://localhost:8765/api/worlds
 ```
 
-- `Dockerfile` multi-stage `node:22-alpine` : build des dépendances de production (better-sqlite3 compilé pour musl), build Vite de l'UI dans `dist/`, image finale minimale exécutée par l'utilisateur non-root `node`.
-- `compose.yaml` : un seul service `watcher`, port `8765:8765`, volume nommé `cpw-data` pour le cache SQLite, redémarrage `unless-stopped`, contrôle de santé via `/api/worlds`, journaux bornés (10 Mo × 3 fichiers).
-- Le MySQL CoreProtect reste sur le LAN : aucun service DB n'est ajouté à la pile. Si le cache doit rester dans le dépôt local, remplacer le volume par `./data:/app/data`.
-- `TZ=Europe/Paris` pour des horodatages lisibles ; l'heure du conteneur suit le fuseau de la ligne `TZ`.
+- `Dockerfile`: multi-stage `node:22-alpine` — build of production dependencies (better-sqlite3 compiled for musl), Vite UI build into `dist/`, minimal final image run by the non-root user `node`.
+- `compose.yaml`: a single `watcher` service, port `8765:8765`, named volume `cpw-data` for the SQLite cache, restart `unless-stopped`, health check via `/api/worlds`, bounded logs (10 MB × 3 files).
+- CoreProtect MySQL stays on the LAN: no DB service is added to the stack. If the cache must remain in the local repository, replace the volume by `./data:/app/data`.
+- `TZ=Europe/Paris` for readable timestamps; the container time follows the `TZ` line.
 
-Premier lancement : backfill complet depuis MySQL puis recomputation lourde, selon la taille des tables CoreProtect (quelques minutes sur un gros serveur).
+First launch: complete backfill from MySQL then a heavy recomputation, depending on CoreProtect table size (a few minutes on a big server).
 
-## Déploiement serveur avec DockGe (image privée sur ghcr.io)
+## Server deployment with DockGe (public image on ghcr.io)
 
-Le workflow `.github/workflows/docker.yml` construit l'image à chaque push sur `main` et pousse les étiquettes `latest` et `sha-<commit>` sur **ghcr.io/anonybrave/coreprotect-watcher** (package créé **privé**, visible dans *Packages → coreprotect-watcher*). Il utilise uniquement le jeton du workflow (`GITHUB_TOKEN`) : aucun secret n'est écrit dans la stack.
+The workflow `.github/workflows/docker.yml` builds the image on every push to `main`, and pushes tags `latest` and `sha-<commit>` to **ghcr.io/anonybrave/coreprotect-watcher** — a public package, visible in *Packages → coreprotect-watcher*. It uses only the workflow token (`GITHUB_TOKEN`): no secret is written into the stack.
 
-Stack à coller dans DockGe (le serveur tire l'image du registre, il ne build pas depuis GitHub) :
+Stack to paste in DockGe (the server pulls the image from the registry, it does not build from GitHub):
 
 ```yaml
 name: coreprotect-watcher
@@ -69,7 +69,7 @@ services:
     ports:
       - 8765:8765
     volumes:
-      - /mnt/ZFS_RAID_1/coreprotect-watcher:/app/data
+      - /data/coreprotect-watcher:/app/data
     init: true
     logging:
       driver: json-file
@@ -79,60 +79,60 @@ services:
 networks: {}
 ```
 
-- Dans DockGe, enregistrez un accès au registre `ghcr.io` : nom d'utilisateur GitHub (`AnonyBrave`) et un **PAT classic scopé `read:packages`** (et rien d'autre). DockGe utilise ce secret pour le pull ; il n'apparaît pas dans le YAML.
-- Activer « surveiller les nouveaux déploiements » sur la stack : à chaque nouvelle image publiée par GitHub Actions, DockGe détecte un nouveau digest, retire l'ancien conteneur et relance avec la dernière étiquette. C'est ce qui remplace l'affichage « skipped – no image to be pulled », dû au fait que la stack ne contenait aucune référence d'image (`image:`), donc DockGe n'avait rien à tirer du registre.
-- Épingler une version : remplacer `:latest` par `:sha-xxxxxxx` (l'étiquette du commit) pour figer le déploiement, puis « Redéployer ».
-- Ne **jamais** mettre un PAT dans `build.context: https://<token>@github.com/...` : le token reste lisible dans la stack, les journaux et l'UI.
+- The `image:` key is required for DockGe to be able to pull. Replace `/data/coreprotect-watcher` with the path used by your server, and fill in `.env`; never add tokens to this file.
+- Activate “monitor new deployments” on the stack: each time GitHub Actions publishes a new image, DockGe detects a new digest, removes the old container, and relaunches the latest tag. This replaces the “skipped – no image to be pulled” display, caused by a stack with no `image:` reference — DockGe had nothing to pull from the registry.
+- Pin a version: replace `:latest` with `:sha-xxxxxxx` (the commit tag) to freeze the deployment, then “Redeploy”.
+- **Never** put a PAT in `build.context: https://<token>@github.com/...`: that token stays readable in the stack, logs, and UI.
 
-## Import de fichiers SQL (sans serveur MySQL)
+## Importing SQL files (without a MySQL server)
 
-Le cache SQLite peut être alimenté par des exports `mysqldump` posés dans le dépôt d'import (`CP_IMPORT_DIR`, défaut `data/imports`) :
+The SQLite cache can be fed by `mysqldump` exports dropped into the import directory (`CP_IMPORT_DIR`, default `data/imports`):
 
 ```bash
-mysqldump -h 192.168.1.30 -u coreprotectui -p coreprotect co_block     > data/imports/co_block.sql
-mysqldump -h 192.168.1.30 -u coreprotectui -p coreprotect co_container > data/imports/co_container.sql
-gzip data/imports/co_item.sql        # les .sql.gz sont acceptés
+mysqldump -h YOUR-MYSQL-HOST -u MYSQL-USER -p coreprotect co_block     > data/imports/co_block.sql
+mysqldump -h YOUR-MYSQL-HOST -u MYSQL-USER -p coreprotect co_container > data/imports/co_container.sql
+gzip data/imports/co_item.sql        # .sql.gz files are accepted too
 ```
 
-- Le dépôt est scruté à chaque cycle : un fichier est importé une seule fois (journal `import_files_json` dans la base, visible dans l'onglet Réglages avec son état : « en attente », « importé », « échec de lecture » et le nombre de lignes insérées).
-- Tables reconnues : `co_user`, `co_world`, `co_material_map`, `co_block`, `co_container`, `co_item`, `co_session`, `co_chat`, `co_command`, `co_login`/`username_log`. Les colonnes sont mappées par la position dans le `CREATE TABLE` de mysqldump, ou par la liste explicite des `INSERT INTO ... (col,...)` ; les noms d'utilisateur deviennent des uid du cache.
-- L'import ne touche jamais MySQL : c'est une source **lecture seule** de fichiers, adaptée aux serveurs dont on exporte les logs périodiquement (`CP_SOURCE=files`, ou `auto` quand MySQL est injoignable).
+- The directory is inspected at every cycle: a file is imported only once (journal `import_files_json` in the database, visible in Settings with its state: “pending”, “imported”, “read failure” and the number of inserted rows).
+- Recognized tables: `co_user`, `co_world`, `co_material_map`, `co_block`, `co_container`, `co_item`, `co_session`, `co_chat`, `co_command`, `co_login`/`username_log`. Columns are mapped by position in the mysqldump `CREATE TABLE`, or by explicit list in `INSERT INTO ... (col,...)`; user names become cache uids.
+- Import never touches MySQL: it is a **read-only** file source, suited to servers whose logs are exported periodically (`CP_SOURCE=files`, or `auto` when MySQL is unreachable).
 
-## Carte (SquareMap + calques Watcher)
+## Map (SquareMap + Watcher layers)
 
-- La base de l'instance est l'URL `squaremap_json.url` (ex. `https://dynmap.anonybrave.fr`). L'onglet « SquareMap » centre sur le spawn du monde mappé, au zoom par défaut de l'instance ; les liens des alertes, joueurs et conteneurs (« voir sur la carte ») recentrent la carte.
-- Correspondance à renseigner dans Réglages : chaque `wid` du cache (world, world_nether, world_the_end) vers le nom de monde de l'instance (`minecraft_overworld`, `minecraft_the_nether`, `minecraft_the_end`). L'onglet propose les noms trouvés en direct via `/api/squaremap/worlds`.
-- Calques Watcher : incidents (pastille colorée selon la sévérité, clic = ouvrir l'alerte), conteneurs (vert possédé, jaune public, violet partagé, gris ambigu), densité de blocs posés par chunk teintée par joueur, emprises maisons/territoires, joueurs connectés suivis par SquareMap (têtes + nom, rafraîchies toutes les 5 s). Chaque calque se masque indépendamment.
-- Les tuiles et JSON (`settings.json`, `players.json`) passent par le proxy serveur ; l'affichage des images de tuiles utilise directement `https://…/tiles/{monde}/{z}/{x}_{y}.png` (512 px, projection Leaflet `CRS.Simple`).
+- The instance base URL is `squaremap_json.url` (e.g. `https://squaremap.example.com`). The “SquareMap” tab centers on the spawn of the mapped world, at the instance default zoom; links from alerts, players and containers (“see on map”) recenter the map.
+- Correspondence to fill in Settings: each cached `wid` (world, world_nether, world_the_end) maps to the instance’s world name (`minecraft_overworld`, `minecraft_the_nether`, `minecraft_the_end`). The tab proposes names live from `/api/squaremap/worlds`.
+- Watcher layers: incidents (colored dot per severity, click = open alert), containers (green owned, yellow public, purple shared, gray ambiguous), density of blocks placed per chunk tinted by player, house/territory footprints, SquareMap-connected players (heads + name, refreshed every 5 s). Each layer can be hidden independently.
+- Tiles and JSON (`settings.json`, `players.json`) go through the server proxy; tile images use `https://…/tiles/{world}/{z}/{x}_{y}.png` directly (512 px, Leaflet projection `CRS.Simple`).
 
-## Variables d'environnement
+## Environment variables
 
-| Variable | Défaut | Rôle |
+| Variable | Default | Role |
 | --- | --- | --- |
-| `CP_DB_HOST` / `CP_DB_PORT` | `192.168.1.30` / `3306` | MySQL CoreProtect |
-| `CP_DB_USER` / `CP_DB_PASSWORD` / `CP_DB_NAME` | `coreprotectui` / `` / `coreprotect` | Identifiants (lecture seule) |
-| `CP_SOURCE` | `auto` | Source des données : `auto`, `mysql`, `files` |
-| `CP_IMPORT_DIR` | `data/imports` | Dépôt des fichiers SQL (.sql, .sql.gz) |
-| `CP_WATCHER_PORT` | `8765` | Port de l'API + UI (`CP_SENTRY_PORT` lu en fallback) |
-| `CP_ADMIN_TOKEN` | `coreprotect-watcher-admin` | Jeton des écritures API ; à changer |
-| `CP_INGEST_SECONDS` | `30` (`.env` : 120) | Fréquence d'ingestion |
-| `CP_RECOMPUTE_MINUTES` | `10` (`.env` : 60) | Fréquence des recomputations complètes |
-| `DISCORD_WEBHOOK_URL` | `` | Webhook ; vide = notifications désactivées |
-| `CP_SQLITE_FILE` | `data/coreprotect-watcher.db` | Emplacement du cache SQLite |
+| `CP_DB_HOST` / `CP_DB_PORT` | `localhost` / `3306` | CoreProtect MySQL |
+| `CP_DB_USER` / `CP_DB_PASSWORD` / `CP_DB_NAME` | `coreprotectui` / `` / `coreprotect` | Credentials (read-only) |
+| `CP_SOURCE` | `auto` | Data source: `auto`, `mysql`, `files` |
+| `CP_IMPORT_DIR` | `data/imports` | Import directory for SQL files (.sql, .sql.gz) |
+| `CP_WATCHER_PORT` | `8765` | API + UI port (`CP_SENTRY_PORT` read as fallback) |
+| `CP_ADMIN_TOKEN` | `coreprotect-watcher-admin` | Token for API writes; must be changed. |
+| `CP_INGEST_SECONDS` | `30` (`.env`: 120) | Ingestion frequency |
+| `CP_RECOMPUTE_MINUTES` | `10` (`.env`: 60) | Full recomputation frequency |
+| `DISCORD_WEBHOOK_URL` | `` | Webhook; empty = notifications disabled |
+| `CP_SQLITE_FILE` | `data/coreprotect-watcher.db` | SQLite cache location |
 
-## Sécurité
+## Security
 
-- `.env` porte le mot de passe MySQL : il est ignoré par git, seules les coordonnées fictives de `.env.example` sont publiées.
-- Le jeton d'admin protège les écritures API (`POST /api/settings`, `POST /api/incidents/:id`, `POST /api/cycle/run`). Il est à personnaliser ; si un navigateur a gardé l'ancien jeton, le ressaisir dans Réglages.
-- Un PAT GitHub ne se met que dans le magasin d'identifiants (Git) ou les secrets de DockGe : jamais dans une stack Compose (`context:` en URL git), ni dans `.env` commité. Pour le pull des images, un PAT **classic scopé `read:packages`** suffit ; le package GHCR reste privé.
-- L'UI n'est pas authentifiée : la réserver aux réseaux de confiance (LAN / VPN), et mettre un jeton fort en face des écritures.
+- `.env` contains the MySQL password: git ignores it, and only fictional coordinates are published in `.env.example`.
+- The admin token protects API writes (`POST /api/settings`, `POST /api/incidents/:id`, `POST /api/cycle/run`). It must be customized; if a browser kept an old token, re-enter it in Settings.
+- A GitHub PAT only belongs in the credential store (Git) or DockGe secrets: never in a Compose stack (`context:` as git URL), nor in a committed `.env`. For pulling the image from GHCR, authentication is not needed while the package stays public; do not embed tokens into any stack.
+- The UI is not authenticated: reserve it to trusted networks (LAN / VPN), and keep a strong token in front of all writes.
 
 ## API
 
-Lecture : `/api/overview`, `/api/players`, `/api/players/:uid`, `/api/worlds`, `/api/scores`, `/api/containers`, `/api/incidents` (filtres `kind`, `status`, `minSeverity`, `wid`, `x0/x1/z0/z1` pour la carte), `/api/incidents/:id`, `/api/houses`, `/api/map`, `/api/shares` (copropriétaires, option `?key=`), `/api/imports` (dépôt SQL et journal d'import), `/api/squaremap/settings`, `/api/squaremap/worlds`, `/api/squaremap/world/:nom`, `/api/squaremap/players`, `/api/settings`, `/api/export.csv`, `/api/stream` (SSE).
+Read: `/api/overview`, `/api/players`, `/api/players/:uid`, `/api/worlds`, `/api/scores`, `/api/containers`, `/api/incidents` (filters `kind`, `status`, `minSeverity`, `wid`, `x0/x1/z0/z1` for the map), `/api/incidents/:id`, `/api/houses`, `/api/map`, `/api/shares` (co-owners, optional `?key=`), `/api/imports` (SQL import directory and journal), `/api/squaremap/settings`, `/api/squaremap/worlds`, `/api/squaremap/world/:name`, `/api/squaremap/players`, `/api/settings`, `/api/export.csv`, `/api/stream` (SSE).
 
-Écritures avec `x-admin-token` : `POST /api/incidents/:id`, `POST /api/settings`, `POST /api/cycle/run`.
+Writes with `x-admin-token`: `POST /api/incidents/:id`, `POST /api/settings`, `POST /api/cycle/run`.
 
 ## Licence
 
-Projet privé, tous droits réservés.
+Private project, all rights reserved.
