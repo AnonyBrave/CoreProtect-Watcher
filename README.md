@@ -6,9 +6,10 @@ Nom du paquet npm : `coreprotect-watcher`. L'interface s'affiche sous « CorePro
 
 ## Architecture
 
-- **Ingestion** : cycle toutes les `CP_INGEST_SECONDS` (120 s dans `.env`), copie incrémentale MySQL → SQLite via un curseur sauvegardé.
-- **Analyse incrémentale** : statistiques par chunk, clusters physiques de conteneurs, propriété des conteneurs, détection `theft`, `grief`, `anomaly`, `chat`, score de risque joueur. Recomputation complète tous les `CP_RECOMPUTE_MINUTES`.
+- **Ingestion** : cycle toutes les `CP_INGEST_SECONDS` (120 s dans `.env`), copie incrémentale MySQL → SQLite via un curseur sauvegardé. Trois modes (`CP_SOURCE`) : `auto` (MySQL si joignable, sinon fichiers déposés), `mysql` (flux direct uniquement), `files` (dépôt de dumps SQL, sans serveur).
+- **Analyse incrémentale** : statistiques par chunk, clusters physiques de conteneurs, propriété des conteneurs et copropriétaires (un conteneur peut appartenir à plusieurs joueurs), détection `theft`, `theft_shared` (vol entre copropriétaires), `dupe` (trois signatures : copie-remplacement dans un conteneur, création au sol, clonage de chunk), `grief`, `anomaly`, `chat`, score de risque joueur. Recomputation complète tous les `CP_RECOMPUTE_MINUTES`.
 - **API + UI** : Fastify écoute sur `0.0.0.0:CP_WATCHER_PORT` (8765) et sert `dist/` (UI construite par Vite), les routes `/api/*`, un flux SSE (`/api/stream`) et des notifications Discord filtrées par sévérité.
+- **Carte SquareMap** : l'onglet « SquareMap » affiche les tuiles de l'instance SquareMap (Leaflet, projection `CRS.Simple`), avec les calques Watcher posés dessus : incidents cliquables vers l'alerte, conteneurs colorés selon leur état de propriété, densité de blocs posés par chunk, emprises des maisons, joueurs suivis en direct. Les tuiles et les JSON sont relayés côté serveur (`/api/squaremap/*`) pour éviter le CORS ; la correspondance monde Watcher → monde SquareMap se règle dans Réglages (`squaremap_json`).
 - **Données** : tout le cache est dans `data/coreprotect-watcher.db` (SQLite). MySQL n'est jamais modifié : connexion en **lecture seule**.
 
 ## Prérequis
@@ -46,12 +47,35 @@ curl http://localhost:8765/api/worlds
 
 Premier lancement : backfill complet depuis MySQL puis recomputation lourde, selon la taille des tables CoreProtect (quelques minutes sur un gros serveur).
 
+## Import de fichiers SQL (sans serveur MySQL)
+
+Le cache SQLite peut être alimenté par des exports `mysqldump` posés dans le dépôt d'import (`CP_IMPORT_DIR`, défaut `data/imports`) :
+
+```bash
+mysqldump -h 192.168.1.30 -u coreprotectui -p coreprotect co_block     > data/imports/co_block.sql
+mysqldump -h 192.168.1.30 -u coreprotectui -p coreprotect co_container > data/imports/co_container.sql
+gzip data/imports/co_item.sql        # les .sql.gz sont acceptés
+```
+
+- Le dépôt est scruté à chaque cycle : un fichier est importé une seule fois (journal `import_files_json` dans la base, visible dans l'onglet Réglages avec son état : « en attente », « importé », « échec de lecture » et le nombre de lignes insérées).
+- Tables reconnues : `co_user`, `co_world`, `co_material_map`, `co_block`, `co_container`, `co_item`, `co_session`, `co_chat`, `co_command`, `co_login`/`username_log`. Les colonnes sont mappées par la position dans le `CREATE TABLE` de mysqldump, ou par la liste explicite des `INSERT INTO ... (col,...)` ; les noms d'utilisateur deviennent des uid du cache.
+- L'import ne touche jamais MySQL : c'est une source **lecture seule** de fichiers, adaptée aux serveurs dont on exporte les logs périodiquement (`CP_SOURCE=files`, ou `auto` quand MySQL est injoignable).
+
+## Carte SquareMap
+
+- La base de l'instance est l'URL `squaremap_json.url` (ex. `https://dynmap.anonybrave.fr`). L'onglet « SquareMap » centre sur le spawn du monde mappé, au zoom par défaut de l'instance ; les liens des alertes, joueurs et conteneurs (« voir sur SquareMap ») recentrent la carte.
+- Correspondance à renseigner dans Réglages : chaque `wid` du cache (world, world_nether, world_the_end) vers le nom de monde de l'instance (`minecraft_overworld`, `minecraft_the_nether`, `minecraft_the_end`). L'onglet propose les noms trouvés en direct via `/api/squaremap/worlds`.
+- Calques Watcher : incidents (pastille colorée selon la sévérité, clic = ouvrir l'alerte), conteneurs (vert possédé, jaune public, violet partagé, gris ambigu), densité de blocs posés par chunk teintée par joueur, emprises maisons/territoires, joueurs connectés suivis par SquareMap (têtes + nom, rafraîchies toutes les 5 s). Chaque calque se masque indépendamment.
+- Les tuiles et JSON (`settings.json`, `players.json`) passent par le proxy serveur ; l'affichage des images de tuiles utilise directement `https://…/tiles/{monde}/{z}/{x}_{y}.png` (512 px, projection Leaflet `CRS.Simple`).
+
 ## Variables d'environnement
 
 | Variable | Défaut | Rôle |
 | --- | --- | --- |
 | `CP_DB_HOST` / `CP_DB_PORT` | `192.168.1.30` / `3306` | MySQL CoreProtect |
 | `CP_DB_USER` / `CP_DB_PASSWORD` / `CP_DB_NAME` | `coreprotectui` / `` / `coreprotect` | Identifiants (lecture seule) |
+| `CP_SOURCE` | `auto` | Source des données : `auto`, `mysql`, `files` |
+| `CP_IMPORT_DIR` | `data/imports` | Dépôt des fichiers SQL (.sql, .sql.gz) |
 | `CP_WATCHER_PORT` | `8765` | Port de l'API + UI (`CP_SENTRY_PORT` lu en fallback) |
 | `CP_ADMIN_TOKEN` | `coreprotect-watcher-admin` | Jeton des écritures API ; à changer |
 | `CP_INGEST_SECONDS` | `30` (`.env` : 120) | Fréquence d'ingestion |
@@ -67,7 +91,7 @@ Premier lancement : backfill complet depuis MySQL puis recomputation lourde, sel
 
 ## API
 
-Lecture : `/api/overview`, `/api/players`, `/api/players/:uid`, `/api/worlds`, `/api/scores`, `/api/containers`, `/api/incidents`, `/api/incidents/:id`, `/api/houses`, `/api/map`, `/api/settings`, `/api/export.csv`, `/api/stream` (SSE).
+Lecture : `/api/overview`, `/api/players`, `/api/players/:uid`, `/api/worlds`, `/api/scores`, `/api/containers`, `/api/incidents` (filtres `kind`, `status`, `minSeverity`, `wid`, `x0/x1/z0/z1` pour la carte), `/api/incidents/:id`, `/api/houses`, `/api/map`, `/api/shares` (copropriétaires, option `?key=`), `/api/imports` (dépôt SQL et journal d'import), `/api/squaremap/settings`, `/api/squaremap/worlds`, `/api/squaremap/world/:nom`, `/api/squaremap/players`, `/api/settings`, `/api/export.csv`, `/api/stream` (SSE).
 
 Écritures avec `x-admin-token` : `POST /api/incidents/:id`, `POST /api/settings`, `POST /api/cycle/run`.
 

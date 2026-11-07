@@ -52,7 +52,7 @@ interface IncidentRow {
   window_end: number | null;
 }
 
-const KIND_LABEL: Record<string, string> = { theft: "Vol", grief: "Grief", anomaly: "Anomalie", chat: "Propos" };
+const KIND_LABEL: Record<string, string> = { theft: "Vol", theft_shared: "Vol entre copropriétaires", dupe: "Duplication", grief: "Grief", anomaly: "Anomalie", chat: "Propos" };
 
 function formatDiscordMessage(i: IncidentRow): string {
   const loc = i.x !== null ? `x=${i.x} y=${i.y} z=${i.z}` : "?";

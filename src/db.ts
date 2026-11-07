@@ -342,7 +342,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   // SquareMap : base de l'instance publique + correspondance wid du cache -> monde squaremap.
   squaremap_json: JSON.stringify({
     url: "https://dynmap.anonybrave.fr",
-    worlds: { 1: "minecraft_overworld", 2: "minecraft_nether", 3: "minecraft_the_end" },
+    worlds: { 1: "minecraft_overworld", 2: "minecraft_the_nether", 3: "minecraft_the_end" },
   }),
 };
 
