@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend } from "recharts";
 import { api, fmtDate, fmtDay, fmtNum, type OverviewData, type ScoreRow } from "../api.js";
 import { KIND_LABEL, playerColor } from "../labels.js";
-import { Card, Bar, Sev, StateChip, StatusChip, LiveLine } from "../ui.js";
+import { Card, Bar, Sev, StateChip, StatusChip, LiveLine, Long } from "../ui.js";
 import { useLive, lastCycleLabel } from "../live.js";
 
 export default function OverviewPage() {
@@ -64,6 +64,7 @@ export default function OverviewPage() {
         </Card>
         <Card title="Ingestion &amp; cycle">
           <LiveLine connected={live.connected} lastCycle={lastCycleLabel(live.lastCycleAt)} />
+          <Long count={ov.cursors.length}>
           <table style={{ marginTop: 8 }}>
             <thead><tr><th>table</th><th className="right">ligne</th><th className="right">rows</th></tr></thead>
             <tbody>
@@ -76,6 +77,7 @@ export default function OverviewPage() {
               ))}
             </tbody>
           </table>
+          </Long>
         </Card>
       </div>
 
@@ -114,6 +116,7 @@ export default function OverviewPage() {
 
       <div className="grid cols-2">
         <Card title="Joueurs (activité et score)">
+          <Long count={players.length}>
           <table>
             <thead>
               <tr><th>joueur</th><th className="right">posés</th><th className="right">cassés</th><th className="right">sessions</th><th className="right">conteneurs utilisés</th><th className="right">incidents</th><th>score</th></tr>
@@ -136,12 +139,14 @@ export default function OverviewPage() {
               ))}
             </tbody>
           </table>
+          </Long>
         </Card>
 
         <Card title="Derniers incidents">
           {ov.recent.length === 0 ? (
             <div className="muted">Aucun incident réel enregistré pour le moment.</div>
           ) : (
+            <Long count={ov.recent.length}>
             <table>
               <thead><tr><th>date</th><th>nature</th><th>sév.</th><th>acteur</th><th>propriétaire</th><th>position</th><th>statut</th></tr></thead>
               <tbody>
@@ -162,6 +167,7 @@ export default function OverviewPage() {
                 ))}
               </tbody>
             </table>
+            </Long>
           )}
         </Card>
       </div>

@@ -75,6 +75,11 @@
       label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
       .kv { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
       .kv .k { color: var(--muted); }
+      .scrolly { overflow-y: auto; max-height: 340px; margin-top: 4px; scrollbar-width: thin; scrollbar-color: #454f61 var(--panel2); }
+      .scrolly::-webkit-scrollbar { width: 9px; }
+      .scrolly::-webkit-scrollbar-track { background: var(--panel2); border-radius: 6px; }
+      .scrolly::-webkit-scrollbar-thumb { background: #454f61; border-radius: 6px; border: 2px solid var(--panel2); }
+      .scrolly th { position: sticky; top: 0; background: var(--panel); z-index: 2; }
     </style>
   </head>
   <body>

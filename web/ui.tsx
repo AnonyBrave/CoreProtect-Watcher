@@ -60,3 +60,7 @@ export function Select<T extends string>({ value, options, onChange, label }: { 
     </div>
   );
 }
+
+/** Enveloppe avec barre de défilement quand la liste dépasse 8 éléments. */
+export const Long = ({ count, children }: { count: number; children: ReactNode }) =>
+  count > 8 ? <div className="scrolly">{children}</div> : <>{children}</>;

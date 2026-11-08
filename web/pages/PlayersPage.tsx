@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend } from "recharts";
 import { api, fmtDate, fmtDay, fmtNum, type PlayerRow, type PlayerDetail, type ScoreRow } from "../api.js";
 import { playerColor } from "../labels.js";
-import { Card, Sev, StateChip, KindChip } from "../ui.js";
+import { Card, Sev, StateChip, KindChip, StatusChip, Long } from "../ui.js";
 
 /** Lien carte centrée sur une position (monde par défaut : 1). */
 const mapLink = (x: number, z: number, wid = 1): string => `#/map?wid=${wid}&x=${Math.round(x)}&z=${Math.round(z)}`;
@@ -34,27 +34,34 @@ export default function PlayersPage({ route }: { route: string }) {
 
 function PlayerList() {
   const [q, setQ] = useState("");
+  const [dir, setDir] = useState<string>("desc");
   const [rows, setRows] = useState<PlayerRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let on = true;
     api
-      .players(q, 200)
+      .players(q, 200, dir)
       .then((r) => { if (on) { setRows(r); setError(null); } })
       .catch((e: Error) => { if (on) setError(e.message); });
     return () => { on = false; };
-  }, [q]);
+  }, [q, dir]);
 
   return (
     <Card title="Joueurs suivis">
       <div className="flexrow" style={{ marginBottom: 8 }}>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="nom du joueur…" />
+        <label>ordre (blocs posés)</label>
+        <select value={dir} onChange={(e) => setDir(e.target.value)}>
+          <option value="desc">décroissant</option>
+          <option value="asc">croissant</option>
+        </select>
         <span className="muted">{fmtNum(rows.length)} joueur(s) affiché(s)</span>
       </div>
       {error ? (
         <p>Erreur : {error}</p>
       ) : (
+        <Long count={rows.length}>
         <table>
           <thead>
             <tr><th>joueur</th><th>uid</th><th className="right">blocs posés</th><th className="right">blocs cassés</th><th className="right">incidents</th><th>dernière connexion</th></tr>
@@ -76,6 +83,7 @@ function PlayerList() {
             ))}
           </tbody>
         </table>
+        </Long>
       )}
     </Card>
   );
@@ -131,7 +139,12 @@ function PlayerDetailView({ uid }: { uid: number }) {
               <LineChart data={chartRows} margin={{ top: 5, right: 8, bottom: 0, left: -18 }}>
                 <XAxis dataKey="jour" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
+                <Tooltip
+                  contentStyle={{ background: "#232835", border: "1px solid #2c3340", borderRadius: 6, fontSize: 12 }}
+                  labelStyle={{ color: "#8a909c" }}
+                  itemStyle={{ color: "#e8ecf1", paddingTop: 2, paddingBottom: 2 }}
+                  cursor={{ stroke: "#455060", fill: "rgba(120,130,145,0.12)" }}
+                />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 {SERIES.map((s) => (
                   <Line key={s.key} type="monotone" dataKey={s.key} name={s.label} stroke={s.color} dot={false} strokeWidth={s.key === "composite" ? 2.4 : 1.4} />
@@ -147,6 +160,7 @@ function PlayerDetailView({ uid }: { uid: number }) {
         </Card>
 
         <Card title="Sessions récentes">
+          <Long count={d.sessions.length}>
           <table>
             <thead><tr><th>date</th><th>monde</th><th>position</th><th>événement</th></tr></thead>
             <tbody>
@@ -160,12 +174,14 @@ function PlayerDetailView({ uid }: { uid: number }) {
               ))}
             </tbody>
           </table>
+          </Long>
         </Card>
 
         <Card title="Maisons et territoires">
           {d.homes.length === 0 ? (
             <p className="muted">aucune zone construite détectée</p>
           ) : (
+            <Long count={d.homes.length}>
             <table>
               <thead><tr><th>nature</th><th>monde</th><th>x</th><th>z</th><th className="right">blocs posés</th><th className="right">types fonctionnels</th></tr></thead>
               <tbody>
@@ -181,6 +197,7 @@ function PlayerDetailView({ uid }: { uid: number }) {
                 ))}
               </tbody>
             </table>
+            </Long>
           )}
         </Card>
 
@@ -188,6 +205,7 @@ function PlayerDetailView({ uid }: { uid: number }) {
           {d.usage.length === 0 ? (
             <p className="muted">aucun usage de conteneur enregistré</p>
           ) : (
+            <Long count={d.usage.length}>
             <table>
               <thead><tr><th>conteneur</th><th>type</th><th className="right">dépôts</th><th className="right">retraits</th><th className="right">volume</th><th>dernier usage</th><th>propriétaire</th></tr></thead>
               <tbody>
@@ -213,6 +231,7 @@ function PlayerDetailView({ uid }: { uid: number }) {
                 ))}
               </tbody>
             </table>
+            </Long>
           )}
         </Card>
 
@@ -220,8 +239,9 @@ function PlayerDetailView({ uid }: { uid: number }) {
           {d.incidents.length === 0 ? (
             <p className="muted">aucun incident réel impliquant ce joueur</p>
           ) : (
+            <Long count={d.incidents.length}>
             <table>
-              <thead><tr><th>date</th><th>nature</th><th>sévérité</th><th>rôle</th><th>victime</th><th className="right">quantité</th><th>conteneur</th></tr></thead>
+              <thead><tr><th>date</th><th>nature</th><th>sévérité</th><th>rôle</th><th>victime</th><th className="right">quantité</th><th>statut</th><th>conteneur</th></tr></thead>
               <tbody>
                 {d.incidents.map((i) => (
                   <tr key={i.id} onClick={() => { location.hash = `#/alerts/${i.id}`; }}>
@@ -231,11 +251,13 @@ function PlayerDetailView({ uid }: { uid: number }) {
                     <td>{i.victim_uid === uid ? "a subi" : "a commis"}</td>
                     <td>{i.victim ?? "-"}</td>
                     <td className="right">{fmtNum(i.amount)}</td>
+                    <td><StatusChip status={i.status} /></td>
                     <td><a href={`#/alerts/${i.id}`}>{i.container_key ?? "-"}</a></td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </Long>
           )}
         </Card>
 
@@ -243,6 +265,7 @@ function PlayerDetailView({ uid }: { uid: number }) {
           {d.chats.length === 0 ? (
             <p className="muted">aucun message surveillé</p>
           ) : (
+            <Long count={d.chats.length}>
             <table>
               <thead><tr><th>date</th><th>position</th><th>message</th></tr></thead>
               <tbody>
@@ -255,6 +278,7 @@ function PlayerDetailView({ uid }: { uid: number }) {
                 ))}
               </tbody>
             </table>
+            </Long>
           )}
         </Card>
 
@@ -262,6 +286,7 @@ function PlayerDetailView({ uid }: { uid: number }) {
           {d.commands.length === 0 ? (
             <p className="muted">aucune commande surveillée</p>
           ) : (
+            <Long count={d.commands.length}>
             <table>
               <thead><tr><th>date</th><th>position</th><th>commande</th></tr></thead>
               <tbody>
@@ -274,6 +299,7 @@ function PlayerDetailView({ uid }: { uid: number }) {
                 ))}
               </tbody>
             </table>
+            </Long>
           )}
         </Card>
 

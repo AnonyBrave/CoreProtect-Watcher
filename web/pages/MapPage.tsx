@@ -14,7 +14,7 @@ import {
   type ShareRow,
 } from "../api.js";
 import { playerColor, STATE_LABEL } from "../labels.js";
-import { Card, StateChip } from "../ui.js";
+import { Card, StateChip, Long } from "../ui.js";
 
 const DOT_COLOR: Record<string, string> = {
   owned: "#3fa34d",
@@ -419,12 +419,14 @@ export default function MapPage({ route }: { route: string }) {
                 <div className="kv"><span className="k">propriétaire</span>
                   <b>{selShare.owner_name ?? "-"}{selShare.owner_uid !== null ? <> (<a href={`#/players/${selShare.owner_uid}`}>fiche</a>)</> : ""}</b>
                 </div>
+                <Long count={selShare.members.length}>
                 {selShare.members.map((m) => (
                   <div key={m.uid} className="kv">
                     <span className="k">{m.name ?? m.uid}{m.co_owner === 1 ? " · co-propriétaire" : ""}</span>
                     <b>{(m.share * 100).toFixed(0)} % · {m.withdraws} retraits / {m.deposits} dépôts</b>
                   </div>
                 ))}
+                </Long>
               </>
             ) : (
               <p className="muted">chargement des copropriétaires…</p>
@@ -435,6 +437,7 @@ export default function MapPage({ route }: { route: string }) {
             {clustersList.length === 0 ? (
               <p className="muted">aucune maison / territoire dans la vue courante</p>
             ) : (
+              <Long count={clustersList.length}>
               <table>
                 <thead><tr><th>joueur</th><th>nature</th><th className="right">blocs posés</th></tr></thead>
                 <tbody>
@@ -447,6 +450,7 @@ export default function MapPage({ route }: { route: string }) {
                   ))}
                 </tbody>
               </table>
+              </Long>
             )}
           </Card>
 

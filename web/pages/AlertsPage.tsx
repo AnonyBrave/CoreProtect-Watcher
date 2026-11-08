@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, csvUrl, fmtDate, fmtNum, type FullIncident, type IncidentRow } from "../api.js";
 import { KIND_LABEL, STATUS_CLASS, STATUS_LABEL, coordText } from "../labels.js";
-import { Card, Sev, StatusChip, KindChip, Toast } from "../ui.js";
+import { Card, Sev, StatusChip, KindChip, Toast, Long } from "../ui.js";
 import { useLive } from "../live.js";
 
 const KINDS = ["", "theft", "theft_shared", "dupe", "grief", "anomaly", "chat"] as const;
@@ -63,6 +63,7 @@ export default function AlertsPage({ route }: { route: string }) {
   const [status, setStatus] = useState<string>("new");
   const [minSev, setMinSev] = useState("0");
   const [page, setPage] = useState(0);
+  const [dir, setDir] = useState<string>("desc");
 
   const [items, setItems] = useState<IncidentRow[]>([]);
   const [ids, setIds] = useState<number[]>([]);
@@ -75,19 +76,19 @@ export default function AlertsPage({ route }: { route: string }) {
   useEffect(() => {
     let on = true;
     api
-      .incidents({ kind, status, minSeverity: Number(minSev) || 0, limit: PAGE, offset: page * PAGE })
+      .incidents({ kind, status, minSeverity: Number(minSev) || 0, dir, limit: PAGE, offset: page * PAGE })
       .then((r) => {
         if (!on) return;
         setItems(r.items);
         setTotal(r.total);
         const full = Math.min(500, Math.max(1, r.total));
-        api.incidents({ kind, status, minSeverity: Number(minSev) || 0, limit: full, offset: 0 })
+        api.incidents({ kind, status, minSeverity: Number(minSev) || 0, dir, limit: full, offset: 0 })
           .then((all) => { if (on) setIds(all.items.map((x) => x.id)); })
           .catch(() => {});
       })
       .catch((e: Error) => { if (on) setToast(e.message); });
     return () => { on = false; };
-  }, [kind, status, minSev, page, live.lastCycleAt]);
+  }, [kind, status, minSev, dir, page, live.lastCycleAt]);
 
   // détail de l'incident sélectionné dans l'adresse
   useEffect(() => {
@@ -155,6 +156,12 @@ export default function AlertsPage({ route }: { route: string }) {
 
           <label>sévérité minimale</label>
           <input style={{ width: 60 }} value={minSev} onChange={(e) => { setMinSev(e.target.value); setPage(0); }} />
+          <label>ordre</label>
+          <select value={dir} onChange={(e) => { setDir(e.target.value); setPage(0); }}>
+            <option value="desc">récent → ancien</option>
+            <option value="asc">ancien → récent</option>
+          </select>
+
           <a href={csvUrl(kind)} className="primary" style={{ marginLeft: "auto" }}>exporter en CSV</a>
         </div>
 
@@ -165,6 +172,7 @@ export default function AlertsPage({ route }: { route: string }) {
           </>
         ) : null}
 
+        <Long count={items.length}>
         <table style={{ marginTop: 8 }}>
           <thead>
             <tr><th>créé le</th><th>nature</th><th>sévérité</th><th>acteur</th><th>victime</th><th>position</th><th className="right">quantité</th><th>statut</th></tr>
@@ -188,6 +196,7 @@ export default function AlertsPage({ route }: { route: string }) {
             ))}
           </tbody>
         </table>
+        </Long>
 
         <div className="flexrow" style={{ marginTop: 8 }}>
           <button type="button" disabled={!prevEnabled} onClick={() => goNeighbor(-1)}>← incident précédent</button>
@@ -238,10 +247,10 @@ function IncidentDetail({ detail, note, setNote, patch }: {
 
           <h3>Suivi administrateur</h3>
           <div className="flexrow">
-            <button type="button" className={`st-btn ${STATUS_CLASS.new}${detail.status === "new" ? " active" : ""}`} onClick={() => patch({ status: "new" })}>nouvel</button>
-            <button type="button" className={`st-btn ${STATUS_CLASS.seen}${detail.status === "seen" ? " active" : ""}`} onClick={() => patch({ status: "seen" })}>vu</button>
-            <button type="button" className={`st-btn ${STATUS_CLASS.closed}${detail.status === "closed" ? " active" : ""}`} onClick={() => patch({ status: "closed" })}>fermé</button>
-            <button type="button" className={`st-btn ${STATUS_CLASS.deleted}${detail.status === "deleted" ? " active" : ""}`} onClick={() => patch({ status: "deleted" })} title="l'incident est masqué de l'interface (liste, vue d'ensemble, carte, export CSV)">supprimer</button>
+            <button type="button" className={`st-btn ${STATUS_CLASS.new}${detail.status === "new" ? " active" : ""}`} onClick={() => patch({ status: "new", note })}>nouvel</button>
+            <button type="button" className={`st-btn ${STATUS_CLASS.seen}${detail.status === "seen" ? " active" : ""}`} onClick={() => patch({ status: "seen", note })}>vu</button>
+            <button type="button" className={`st-btn ${STATUS_CLASS.closed}${detail.status === "closed" ? " active" : ""}`} onClick={() => patch({ status: "closed", note })}>fermé</button>
+            <button type="button" className={`st-btn ${STATUS_CLASS.deleted}${detail.status === "deleted" ? " active" : ""}`} onClick={() => patch({ status: "deleted", note })} title="l'incident est masqué de l'interface (liste, vue d'ensemble, carte, export CSV)">supprimer</button>
             <span className="muted">jeton d'administration défini dans l'onglet Réglages, enregistré localement</span>
           </div>
           <label>note interne</label>

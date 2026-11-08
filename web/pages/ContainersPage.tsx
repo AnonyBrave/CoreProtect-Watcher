@@ -1,7 +1,7 @@
 /** Conteneurs : filtres (état, propriétaire, zone) et pagination sur l'inventaire de propriété. */
 import { useEffect, useState } from "react";
 import { api, fmtDate, fmtNum, type ContainerRow, type PlayerRow } from "../api.js";
-import { Card, StateChip, Bar } from "../ui.js";
+import { Card, StateChip, Bar, Long } from "../ui.js";
 
 const PAGE = 100;
 const STATES = ["", "owned", "public", "ambiguous", "untracked"] as const;
@@ -15,6 +15,7 @@ export default function ContainersPage() {
   const [z0, setZ0] = useState("");
   const [z1, setZ1] = useState("");
   const [page, setPage] = useState(0);
+  const [dir, setDir] = useState<string>("desc");
   const [rows, setRows] = useState<ContainerRow[]>([]);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export default function ContainersPage() {
 
   useEffect(() => {
     let on = true;
-    const params: Record<string, string | number> = { limit: PAGE, offset: page * PAGE };
+    const params: Record<string, string | number> = { limit: PAGE, offset: page * PAGE, dir };
     if (state) params.state = state;
     if (owner) params.owner = owner;
     for (const [k, v] of [["x0", x0], ["x1", x1], ["z0", z0], ["z1", z1]] as const) {
@@ -33,10 +34,10 @@ export default function ContainersPage() {
     }
     api.containers(params).then((r) => { if (on) { setRows(r); setError(null); } }).catch((e: Error) => { if (on) setError(e.message); });
     return () => { on = false; };
-  }, [state, owner, x0, x1, z0, z1, page]);
+  }, [state, owner, x0, x1, z0, z1, dir, page]);
 
   const reset = () => {
-    setState(""); setOwner(""); setX0(""); setX1(""); setZ0(""); setZ1(""); setPage(0);
+    setState(""); setOwner(""); setX0(""); setX1(""); setZ0(""); setZ1(""); setPage(0); setDir("desc");
   };
 
   return (
@@ -67,6 +68,12 @@ export default function ContainersPage() {
           <label>z max</label>
           <input style={{ width: 80 }} value={z1} onChange={(e) => { setZ1(e.target.value); setPage(0); }} />
 
+          <label>ordre (volume)</label>
+          <select value={dir} onChange={(e) => { setDir(e.target.value); setPage(0); }}>
+            <option value="desc">volume décroissant</option>
+            <option value="asc">volume croissant</option>
+          </select>
+
           <button type="button" onClick={reset}>effacer les filtres</button>
         </div>
       </Card>
@@ -76,6 +83,7 @@ export default function ContainersPage() {
           <p>Erreur : {error}</p>
         ) : (
           <>
+            <Long count={rows.length}>
             <table>
               <thead>
                 <tr><th>conteneur</th><th>type</th><th>position</th><th className="right">volume</th><th className="right">dépôts / retraits</th><th>propriétaire</th><th>score de propriété</th><th>état</th></tr>
@@ -95,6 +103,7 @@ export default function ContainersPage() {
                 ))}
               </tbody>
             </table>
+            </Long>
 
             <div className="flexrow" style={{ marginTop: 8 }}>
               <button type="button" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>← page précédente</button>

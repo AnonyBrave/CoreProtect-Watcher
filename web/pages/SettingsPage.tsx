@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, getAdminToken, setAdminToken, squaremapWorldsList, type ImportFile } from "../api.js";
 import { lastCycleLabel, useLive } from "../live.js";
-import { Card, Toast } from "../ui.js";
+import { Card, Toast, Long } from "../ui.js";
 
 const WEIGHT_LABELS: Record<string, string> = {
   base: "vol : base",
@@ -264,6 +264,7 @@ export default function SettingsPage() {
           {importFiles.length === 0 ? (
             <p className="muted">aucun fichier dans le dépôt</p>
           ) : (
+            <Long count={importFiles.length}>
             <table>
               <thead><tr><th>fichier</th><th>état</th><th className="right">taille</th><th className="right">lignes importées</th><th>daté du</th></tr></thead>
               <tbody>
@@ -278,6 +279,7 @@ export default function SettingsPage() {
                 ))}
               </tbody>
             </table>
+            </Long>
           )}
           <button type="button" onClick={() => api.imports().then((r) => { setImportDir(r.dir); setImportFiles(r.files); })}>rafraîchir</button>
         </Card>

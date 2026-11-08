@@ -151,7 +151,8 @@ export interface ScoreRow {
 export const api = {
   overview: () => json<OverviewData>("/api/overview"),
   worlds: () => json<{ wid: number; name: string }[]>("/api/worlds"),
-  players: (q = "", limit = 200) => json<PlayerRow[]>(`/api/players?q=${encodeURIComponent(q)}&limit=${limit}`),
+  players: (q = "", limit = 200, dir = "desc") =>
+    json<PlayerRow[]>(`/api/players?q=${encodeURIComponent(q)}&limit=${limit}&dir=${dir}`),
   playerDetail: (uid: number) => json<PlayerDetail>(`/api/players/${uid}`),
   containers: (params: Record<string, string | number>) => {
     const qs = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)]));

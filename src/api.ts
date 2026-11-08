@@ -145,9 +145,10 @@ export function createApp(): FastifyInstance {
 
   // --- Joueurs -----------------------------------------------------------
   app.get("/api/players", (req) => {
-    const q = req.query as { q?: string; limit?: string };
+    const q = req.query as { q?: string; limit?: string; dir?: string };
     const needle = q.q ?? "";
     const limit = Math.min(200, num(q.limit, 50));
+    const dirSql = q.dir === "asc" ? "ASC" : "DESC";
     return db
       .prepare(
         `SELECT p.uid,p.name,p.uuid,p.is_whitelisted,p.total_placed,p.total_broken,
@@ -155,7 +156,7 @@ export function createApp(): FastifyInstance {
                 (SELECT COUNT(*) FROM incident i WHERE i.test=0 AND i.uid=p.uid AND i.status<>'deleted') incidents
          FROM player p
          WHERE p.is_fake=0 AND (? = '' OR p.name LIKE '%'||?||'%')
-         ORDER BY p.total_placed DESC LIMIT ?`
+         ORDER BY p.total_placed ${dirSql} LIMIT ?`
       )
       .all(needle, needle, limit);
   });
@@ -225,6 +226,7 @@ export function createApp(): FastifyInstance {
     const offset = num(q.offset, 0);
     const state = q.state ?? null;
     const owner = q.owner ? num(q.owner) : null;
+    const dirSql = q.dir === "asc" ? "ASC" : "DESC";
 
     return db
       .prepare(
@@ -236,7 +238,7 @@ export function createApp(): FastifyInstance {
          WHERE (? IS NULL OR o.trust_state=?) AND (? IS NULL OR o.owner_uid=?)
            AND c.x BETWEEN COALESCE(?, -2147483647) AND COALESCE(?, 2147483647)
            AND c.z BETWEEN COALESCE(?, -2147483647) AND COALESCE(?, 2147483647)
-         ORDER BY c.volume DESC LIMIT ? OFFSET ?`
+         ORDER BY c.volume ${dirSql} LIMIT ? OFFSET ?`
       )
       .all(
         state,
@@ -367,6 +369,7 @@ export function createApp(): FastifyInstance {
 
     // Incidents ignorés (statut « deleted ») : masqués partout sauf filtre explicite.
     const delClause = status === "" ? " AND i.status<>'deleted'" : "";
+    const dirSql = q.dir === "asc" ? "ASC" : "DESC";
 
     const items = db
       .prepare(
@@ -378,7 +381,7 @@ export function createApp(): FastifyInstance {
            AND (? IS NULL OR i.wid=?)
            AND (COALESCE(i.x,-2147483647) BETWEEN ? AND ?)
            AND (COALESCE(i.z,-2147483647) BETWEEN ? AND ?)
-         ORDER BY i.created_at DESC, i.id DESC LIMIT ? OFFSET ?`
+         ORDER BY i.created_at ${dirSql}, i.id ${dirSql} LIMIT ? OFFSET ?`
       )
       .all(kind, kind, status, status, num(q.minSeverity, 0), wid, wid, x0 ?? -2147483647, x1 ?? 2147483647, z0 ?? -2147483647, z1 ?? 2147483647, limit, offset);
 
