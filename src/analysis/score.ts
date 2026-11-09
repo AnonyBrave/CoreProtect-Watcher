@@ -25,7 +25,8 @@ export function computeScores(): void {
                      + SUM(CASE WHEN kind='chat' THEN severity ELSE 0 END) * ?
                      + SUM(CASE WHEN kind='dupe' THEN severity ELSE 0 END) * ?) / 2)
      FROM incident
-     WHERE test=0 AND uid NOT NULL AND window_start IS NOT NULL
+     WHERE test=0 AND status <> 'deleted' AND uid NOT NULL AND window_start IS NOT NULL
      GROUP BY uid, CAST(window_start / 86400 AS INTEGER)`
   ).run(wtTheft, wtGrief, wtAnomaly, wtChat, wtDupe);
 }
+
