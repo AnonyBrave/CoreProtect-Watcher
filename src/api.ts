@@ -540,5 +540,40 @@ export function createApp(): FastifyInstance {
     return { ok: true, cursors: { blk: maxRowid("blk"), container: maxRowid("container_evt") } };
   });
 
+  // --- Admin : remise à zéro de la base locale SQLite ------------------
+  app.post("/api/admin/reset-db", { preHandler: [requireAdmin] }, async (req, reply) => {
+    const body = req.body as { confirm?: string };
+    if (!body || body.confirm !== "REINITIALISER") {
+      return reply.code(400).send({ error: "confirmation manquante : saisir REINITIALISER" });
+    }
+
+    // Tout le cache (événements, agrégations, incidents, journal de notifications) est vidé ;
+    // les réglages sont conservés. Les curseurs repartent de zéro et la base se reconstruit
+    // aux cycles suivants depuis MySQL live (et les dumps SQL non journalisés).
+    const tables = [
+      "blk", "container_evt", "item_evt", "session_evt", "chat_evt", "command_evt",
+      "username_log", "player", "world", "material", "functional_type", "container_type",
+      "item_rarity", "chunk_stat", "home_cluster", "phys_container", "container_owner",
+      "container_share", "usage_stat", "player_score", "incident", "notify_log",
+    ];
+
+    const cleared: Record<string, number> = {};
+    db.transaction(() => {
+      for (const t of tables) {
+        cleared[t] = db.prepare(`DELETE FROM ${t}`).run().changes;
+      }
+      db.prepare("UPDATE sync_cursor SET last_rowid=0, rows_total=0, last_sync_at=NULL").run();
+      cleared["analysis_state"] = db.prepare("DELETE FROM analysis_state").run().changes;
+      // Les dumps SQL déjà journalisés ne sont pas rejoués ; le ledger est remis à vide.
+      setSetting("import_files_json", {} as Record<string, number>);
+      db.prepare(
+        "INSERT INTO analysis_state(key,value) VALUES('recompute_pending','1') ON CONFLICT(key) DO UPDATE SET value='1'"
+      ).run();
+    })();
+
+    broadcast("cycle-reset", { cleared });
+    return { ok: true, cleared };
+  });
+
   return app;
 }

@@ -84,6 +84,7 @@ export default function SettingsPage() {
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [token, setTokenState] = useState(getAdminToken());
   const [newName, setNewName] = useState("");
+  const [resetWord, setResetWord] = useState("");
   const [toast, setToast] = useState<string | null>(null);
 
   // Carte SquareMap : url de l'instance + correspondance wid du cache -> nom squaremap.
@@ -149,6 +150,18 @@ export default function SettingsPage() {
 
   const forceCycle = () => {
     api.cycleRun().then(() => setToast("cycle forcé demandé")).catch((e: Error) => setToast(e.message));
+  };
+
+  const resetDb = () => {
+    if (resetWord.trim() !== "REINITIALISER") return;
+    if (!window.confirm("Vider toute la base locale ? Les réglages sont conservés, la reconstruction démarre au cycle suivant.")) return;
+    api.resetLocalDb()
+      .then((r) => {
+        const total = Object.values(r.cleared).reduce((a, b) => a + b, 0);
+        setToast(`base locale vidée (${total.toLocaleString("fr-FR")} lignes) : ré-ingestion et recalcul automatique aux cycles suivants`);
+        setResetWord("");
+      })
+      .catch((e: Error) => setToast(e.message));
   };
 
   return (
@@ -253,6 +266,26 @@ export default function SettingsPage() {
             {sqNames.map((n) => <option key={n} value={n}>{n}</option>)}
           </datalist>
           {sqNames.length === 0 ? <p className="muted">SquareMap injoignable pour lister les mondes disponibles</p> : null}
+        </Card>
+
+        <Card title="Base locale SQLite (cache de l'analyse)">
+          <p className="muted">
+            Vide tout le cache local : événements copiés, agrégations, conteneurs, maisons, incidents et journal
+            de notifications. Les réglages sont conservés. La base se reconstruit automatiquement aux cycles
+            suivants (depuis MySQL live si disponible, et les dumps SQL non journalisés).
+          </p>
+          <label>confirmation : saisir exactement REINITIALISER</label>
+          <div className="flexrow">
+            <input
+              value={resetWord}
+              onChange={(e) => setResetWord(e.target.value)}
+              placeholder="REINITIALISER"
+              style={{ width: 200 }}
+            />
+            <button type="button" disabled={resetWord.trim() !== "REINITIALISER"} onClick={resetDb}>
+              réinitialiser la base locale
+            </button>
+          </div>
         </Card>
 
         <Card title="Import de fichiers SQL (dépôt d'ingestion)">

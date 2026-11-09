@@ -174,6 +174,12 @@ export const api = {
   saveSettings: (body: Record<string, unknown>) =>
     json<{ ok: boolean; changed: string[] }>("/api/settings", { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) }),
   cycleRun: () => json<{ ok: boolean }>(`/api/cycle/run`, { method: "POST", headers: adminHeaders(), body: "{}" }),
+  resetLocalDb: () =>
+    json<{ ok: boolean; cleared: Record<string, number> }>("/api/admin/reset-db", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ confirm: "REINITIALISER" }),
+    }),
   imports: () => json<{ dir: string; files: ImportFile[] }>("/api/imports"),
 };
 
